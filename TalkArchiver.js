@@ -494,31 +494,209 @@
 	 * No API calls — fast and language-agnostic.
 	 *
 	 * Supported patterns:
-	 *   1. ISO-like  : 2019-08-21T09:32:00Z  or  2019-08-21 09.32
-	 *   2. MediaWiki : HH:MM, DD Month YYYY  (en, id, gor, jv, su, etc.)
+	 *   1.  ISO full      : 2019-08-21T09:32:00Z
+	 *   1b. ISO no-Z      : 2026-05-22T13:24:57  (no trailing Z)
+	 *   2.  ISO with space: 2019-08-21 09:32 / 2019-08-21 09.32
+	 *   3.  MW Latin DMY  : 09:32, 21 January 2019 (UTC)  [en + many wikis]
+	 *   3b. MW Latin MDY  : 13:24, May 22, 2026            [en MDY variant]
+	 *   3c. MW Latin YMD  : 13:24, 2026 May 22             [rare YMD variant]
+	 *   4.  MW Indonesian : 15 Mei 2026 03.18 (UTC)        [id, ace, ban, …]
+	 *   5.  MW Japanese   : 2014年5月22日 (木) 00:33 (UTC)  [ja]
+	 *   6.  MW Chinese    : 02:25 2007年1月28日 (UTC)       [zh]
 	 *
 	 * Returns the most recent Date found, or null if none matched.
 	 */
 	async function getThreadLastTimestamp( threadContent ) {
-		const RE_ISO   = /\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\b/g;
-		const RE_MWSIG = /\b(\d{1,2})\s+\w+\s+(\d{4})\b/g;
 
-		const dates = [];
-		let m;
+		/* ── Month-name lookup tables ─────────────────────────────── */
 
-		while ( ( m = RE_ISO.exec( threadContent ) ) !== null ) {
-			const d = new Date( m[ 1 ] );
-			if ( !isNaN( d ) ) dates.push( d );
+		// English month names (used by many wikis in Latin script)
+		const MONTHS_EN = {
+			january:1, february:2, march:3, april:4, may:5, june:6,
+			july:7, august:8, september:9, october:10, november:11, december:12,
+			// Abbreviated
+			jan:1, feb:2, mar:3, apr:4, jun:6, jul:7, aug:8,
+			sep:9, sept:9, oct:10, nov:11, dec:12
+		};
+
+		// Indonesian / Malay month names
+		// Covers: id, ace, ban, bjn, map-bms, bbc, bew, bug, gor, jv, kge,
+		//         mad, btm, min, nia, su (and ms)
+		const MONTHS_ID = {
+			januari:1, februari:2, maret:3, april:4, mei:5, juni:6,
+			juli:7, agustus:8, september:9, oktober:10, november:11, desember:12
+		};
+
+		// Combined Latin lookup (en + id/ms)
+		const MONTHS_LATIN = Object.assign( {}, MONTHS_EN, MONTHS_ID );
+
+		// CJK numeric months — 年/月/日 carry the structure, no name table needed
+
+		/* ── Safe date builder — avoids unreliable new Date(string) ── */
+
+		/**
+		 * Build a Date from explicit parts.
+		 * @param {number} year  Full 4-digit year
+		 * @param {number} month 1-based month
+		 * @param {number} day   1-based day
+		 * @param {number} [hour=0]
+		 * @param {number} [min=0]
+		 * @returns {Date|null}
+		 */
+		function makeDate( year, month, day, hour, min ) {
+			if ( year < 2001 || year > 2099 ) return null;
+			if ( month < 1   || month > 12  ) return null;
+			if ( day   < 1   || day   > 31  ) return null;
+			return new Date( Date.UTC(
+				year, month - 1, day,
+				( hour || 0 ), ( min || 0 ), 0
+			) );
 		}
 
-		while ( ( m = RE_MWSIG.exec( threadContent ) ) !== null ) {
-			const raw  = m[ 0 ];
-			const year = parseInt( m[ 2 ], 10 );
-			const d    = new Date( raw );
-			if ( !isNaN( d ) ) {
-				dates.push( d );
-			} else if ( year >= 2001 && year <= 2099 ) {
-				dates.push( new Date( year, 0, 1 ) );
+		const dates = [];
+
+		/* ── Pattern 1 + 1b: ISO  2019-08-21T09:32:00Z
+		                          2026-05-22T13:24:57 ─────────────── */
+		const RE_ISO_FULL = /\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z)?\b/g;
+		{
+			let m;
+			while ( ( m = RE_ISO_FULL.exec( threadContent ) ) !== null ) {
+				const d = makeDate(
+					parseInt( m[1], 10 ), parseInt( m[2], 10 ), parseInt( m[3], 10 ),
+					parseInt( m[4], 10 ), parseInt( m[5], 10 )
+				);
+				if ( d ) dates.push( d );
+			}
+		}
+
+		/* ── Pattern 2: ISO with space  2019-08-21 09:32 / 09.32 ──── */
+		// Avoid double-matching pattern 1 (no T before time)
+		const RE_ISO_SPACE = /\b(\d{4})-(\d{2})-(\d{2})\s+(\d{2})[.:](\d{2})\b(?![\d:Z])/g;
+		{
+			let m;
+			while ( ( m = RE_ISO_SPACE.exec( threadContent ) ) !== null ) {
+				const d = makeDate(
+					parseInt( m[1], 10 ), parseInt( m[2], 10 ), parseInt( m[3], 10 ),
+					parseInt( m[4], 10 ), parseInt( m[5], 10 )
+				);
+				if ( d ) dates.push( d );
+			}
+		}
+
+		/* ── Pattern 3 + 3b + 3c + 4: Latin / Indonesian  ───────────
+		   Formats handled:
+		     09:32, 21 January 2019 (UTC)   ← DMY, time before  (en/id)
+		     21 January 2019 09:32 (UTC)    ← DMY, time after   (en/id)
+		     15 Mei 2026 03.18 (UTC)        ← DMY, dot sep      (id)
+		     15 Mei 2026 pukul 03.18 (UTC)  ← DMY, "pukul"      (id)
+		     13:24, May 22, 2026            ← MDY, time before  (en MDY)
+		     13:24, 2026 May 22             ← YMD, time before  (rare)
+		────────────────────────────────────────────────────────────── */
+
+		// 3 / 4 — DMY: optional leading time, day, month-word, year,
+		//              optional "pukul", optional trailing time
+		const RE_LATIN = /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b(?:\s+(?:pukul\s+)?(\d{1,2})[.:](\d{2}))?/g;
+		{
+			let m;
+			while ( ( m = RE_LATIN.exec( threadContent ) ) !== null ) {
+				const monthName = m[4].toLowerCase();
+				const monthNum  = MONTHS_LATIN[ monthName ];
+				if ( !monthNum ) continue;
+
+				const year  = parseInt( m[5], 10 );
+				const day   = parseInt( m[3], 10 );
+
+				// Prefer trailing time (m[6]/m[7]), then leading time (m[1]/m[2])
+				const hour = parseInt( m[6] || m[1] || '0', 10 );
+				const min  = parseInt( m[7] || m[2] || '0', 10 );
+
+				const d = makeDate( year, monthNum, day, hour, min );
+				if ( d ) dates.push( d );
+			}
+		}
+
+		// 3b — MDY: 13:24, May 22, 2026
+		const RE_MDY = /\b(?:(\d{1,2}):(\d{2}),\s+)?([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})\b/g;
+		{
+			let m;
+			while ( ( m = RE_MDY.exec( threadContent ) ) !== null ) {
+				const monthName = m[3].toLowerCase();
+				const monthNum  = MONTHS_LATIN[ monthName ];
+				if ( !monthNum ) continue;
+
+				const day  = parseInt( m[4], 10 );
+				const year = parseInt( m[5], 10 );
+				const hour = parseInt( m[1] || '0', 10 );
+				const min  = parseInt( m[2] || '0', 10 );
+
+				const d = makeDate( year, monthNum, day, hour, min );
+				if ( d ) dates.push( d );
+			}
+		}
+
+		// 3c — YMD: 13:24, 2026 May 22
+		const RE_YMD = /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/g;
+		{
+			let m;
+			while ( ( m = RE_YMD.exec( threadContent ) ) !== null ) {
+				const monthName = m[4].toLowerCase();
+				const monthNum  = MONTHS_LATIN[ monthName ];
+				if ( !monthNum ) continue;
+
+				// makeDate rejects m[3] values outside 2001–2099, guarding false matches
+				const year = parseInt( m[3], 10 );
+				const day  = parseInt( m[5], 10 );
+				const hour = parseInt( m[1] || '0', 10 );
+				const min  = parseInt( m[2] || '0', 10 );
+
+				const d = makeDate( year, monthNum, day, hour, min );
+				if ( d ) dates.push( d );
+			}
+		}
+
+		/* ── Pattern 5: Japanese  2014年5月22日 (木) 00:33 (UTC) ──── */
+		const RE_JA = /(\d{4})年(\d{1,2})月(\d{1,2})日\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})/g;
+		{
+			let m;
+			while ( ( m = RE_JA.exec( threadContent ) ) !== null ) {
+				const d = makeDate(
+					parseInt( m[1], 10 ), parseInt( m[2], 10 ), parseInt( m[3], 10 ),
+					parseInt( m[4], 10 ), parseInt( m[5], 10 )
+				);
+				if ( d ) dates.push( d );
+			}
+		}
+
+		/* ── Pattern 6: Chinese  02:25 2007年1月28日 (UTC) ────────── */
+		// Time may appear before or after the date.
+		// RE_JA also fires on 年月日 text — duplicates are harmless
+		// since Math.max picks the same value.
+		const RE_ZH = /(?:(\d{1,2}):(\d{2})\s+)?(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s+(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2}))?/g;
+		{
+			let m;
+			while ( ( m = RE_ZH.exec( threadContent ) ) !== null ) {
+				const year  = parseInt( m[3], 10 );
+				const month = parseInt( m[4], 10 );
+				const day   = parseInt( m[5], 10 );
+				// Trailing time preferred, then leading
+				const hour = parseInt( m[6] || m[1] || '0', 10 );
+				const min  = parseInt( m[7] || m[2] || '0', 10 );
+
+				const d = makeDate( year, month, day, hour, min );
+				if ( d ) dates.push( d );
+			}
+		}
+
+		/* ── Year-only fallback ───────────────────────────────────── */
+		// Only used when none of the above matched anything.
+		if ( !dates.length ) {
+			const RE_YEAR = /\b(20[012]\d)\b/g;
+			let m;
+			while ( ( m = RE_YEAR.exec( threadContent ) ) !== null ) {
+				const year = parseInt( m[1], 10 );
+				if ( year >= 2001 && year <= 2099 ) {
+					dates.push( new Date( Date.UTC( year, 0, 1 ) ) );
+				}
 			}
 		}
 
