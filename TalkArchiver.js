@@ -12,6 +12,7 @@
  *               other wikis use "Archives")
  * > Timestamp: Read directly from signature patterns in thread text —
  *              no diff API needed, works across languages.
+ * > Changes  : FAB always visible; empty-page notice dialog added.
  * •==============================================•
  */
 // <nowiki>
@@ -49,29 +50,18 @@
 	const ARCHIVE_SUBPAGE = getArchiveSubpage();
 
 	/* ── 3. Strip wikilinks from a title string ───────────────────── */
-	/**
-	 * Converts wikilink markup to plain text:
-	 *   [[User:Foo|Bar]]  →  Bar
-	 *   [[User:Foo]]      →  Foo (last segment after last colon or slash)
-	 *   [[Page]]          →  Page
-	 * Also strips remaining < > markup tags for safety.
-	 */
 	function stripWikilinks( title ) {
-		// [[target|label]] → label
 		let out = title.replace( /\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2' );
-		// [[target]] → last part of target (after last colon or slash)
 		out = out.replace( /\[\[([^\]]+)\]\]/g, ( _m, target ) => {
 			const parts = target.split( /[:\/]/ );
 			return parts[ parts.length - 1 ].trim();
 		} );
-		// Strip any remaining HTML-like tags
 		out = out.replace( /<[^>]+>/g, '' );
 		return out.trim();
 	}
 
 	/* ── 4. CSS ───────────────────────────────────────────────────── */
 	mw.util.addCSS( `
-		/* Per-thread archive button (small icon) */
 		.ta-btn {
 			display: inline-flex;
 			align-items: center;
@@ -92,7 +82,6 @@
 		.ta-btn:hover { background: #eaf0fb; border-color: #36c; }
 		.ta-btn:disabled { opacity: .45; cursor: not-allowed; }
 
-		/* Floating Archive Manager FAB */
 		#ta-fab {
 			position: fixed;
 			bottom: 28px;
@@ -130,7 +119,6 @@
 			pointer-events: none;
 		}
 
-		/* Spinner */
 		.ta-btn-spinner {
 			display: inline-block;
 			width: 10px; height: 10px;
@@ -141,7 +129,6 @@
 		}
 		@keyframes ta-spin { to { transform: rotate(360deg); } }
 
-		/* Overlay & dialog base */
 		.ta-overlay {
 			position: fixed;
 			inset: 0;
@@ -204,10 +191,8 @@
 		}
 		.ta-dialog-footer-right { display: flex; gap: 7px; }
 
-		/* Small dialog variant */
 		.ta-dialog-sm { width: min(520px, 96%); }
 
-		/* Toolbar inside panel */
 		.ta-toolbar {
 			padding: 9px 14px;
 			background: #f0f2f5;
@@ -233,7 +218,6 @@
 			font-size: 0.95em;
 		}
 
-		/* Thread table */
 		.ta-thread-table {
 			width: 100%;
 			border-collapse: collapse;
@@ -267,7 +251,6 @@
 		.ta-td-dest   { color: #3366cc; font-size: 0.85em; word-break: break-all; }
 		.ta-td-status { width: 90px; text-align: center; }
 
-		/* Year select — table column */
 		.ta-year-sel {
 			padding: 2px 4px;
 			border: 1px solid #a2a9b1;
@@ -285,7 +268,6 @@
 			font-weight: 700;
 		}
 
-		/* Year picker in single-thread dialog */
 		.ta-year-row {
 			display: flex;
 			align-items: center;
@@ -314,7 +296,6 @@
 			margin-top: 4px;
 		}
 
-		/* Status badges */
 		.ta-badge {
 			display: inline-block;
 			padding: 2px 7px;
@@ -328,10 +309,8 @@
 		.ta-badge-error    { background: #fde8e8; color: #b00; }
 		.ta-badge-skipped  { background: #f0f0f0; color: #555; }
 
-		/* Footer info text */
 		.ta-footer-info { font-size: 0.83em; color: #54595d; }
 
-		/* Bulk confirm list */
 		.ta-confirm-list {
 			margin: 8px 0 0;
 			padding: 0;
@@ -349,7 +328,6 @@
 		.ta-confirm-list li:last-child { border-bottom: none; }
 		.ta-confirm-list .ta-dest { color: #3366cc; font-size: 0.82em; }
 
-		/* Body padding helper */
 		.ta-dialog-body-pad { padding: 14px 16px; }
 		.ta-progress-log {
 			margin-top: 10px;
@@ -358,14 +336,12 @@
 			min-height: 1.5em;
 		}
 
-		/* Animations */
 		@keyframes ta-fadein  { from { opacity:0 } to { opacity:1 } }
 		@keyframes ta-slidein {
 			from { opacity:0; transform:translateY(-8px) }
 			to   { opacity:1; transform:translateY(0) }
 		}
 
-		/* Dark mode */
 		@media (prefers-color-scheme: dark) {
 			.ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
 			.ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
@@ -405,7 +381,6 @@
 		overlay.className = 'ta-overlay';
 		document.body.appendChild( overlay );
 
-		// Register a close handler — replaced by createDialog with onClose support
 		overlay.closeHandler = () => {
 			overlay.remove();
 			const idx = overlayStack.indexOf( overlay );
@@ -417,10 +392,8 @@
 	}
 
 	function createDialog( opts ) {
-		// opts: { title, icon, small, onClose }
 		const overlay = createOverlay();
 
-		// Override closeHandler to support onClose callback
 		overlay.closeHandler = () => {
 			overlay.remove();
 			const idx = overlayStack.indexOf( overlay );
@@ -489,60 +462,22 @@
 	}
 
 	/* ── 8. Get last timestamp from thread signatures ────────────── */
-	/**
-	 * Reads timestamps from wikitext signature patterns.
-	 * No API calls — fast and language-agnostic.
-	 *
-	 * Supported patterns:
-	 *   1.  ISO full      : 2019-08-21T09:32:00Z
-	 *   1b. ISO no-Z      : 2026-05-22T13:24:57  (no trailing Z)
-	 *   2.  ISO with space: 2019-08-21 09:32 / 2019-08-21 09.32
-	 *   3.  MW Latin DMY  : 09:32, 21 January 2019 (UTC)  [en + many wikis]
-	 *   3b. MW Latin MDY  : 13:24, May 22, 2026            [en MDY variant]
-	 *   3c. MW Latin YMD  : 13:24, 2026 May 22             [rare YMD variant]
-	 *   4.  MW Indonesian : 15 Mei 2026 03.18 (UTC)        [id, ace, ban, …]
-	 *   5.  MW Japanese   : 2014年5月22日 (木) 00:33 (UTC)  [ja]
-	 *   6.  MW Chinese    : 02:25 2007年1月28日 (UTC)       [zh]
-	 *
-	 * Returns the most recent Date found, or null if none matched.
-	 */
 	async function getThreadLastTimestamp( threadContent ) {
 
-		/* ── Month-name lookup tables ─────────────────────────────── */
-
-		// English month names (used by many wikis in Latin script)
 		const MONTHS_EN = {
 			january:1, february:2, march:3, april:4, may:5, june:6,
 			july:7, august:8, september:9, october:10, november:11, december:12,
-			// Abbreviated
 			jan:1, feb:2, mar:3, apr:4, jun:6, jul:7, aug:8,
 			sep:9, sept:9, oct:10, nov:11, dec:12
 		};
 
-		// Indonesian / Malay month names
-		// Covers: id, ace, ban, bjn, map-bms, bbc, bew, bug, gor, jv, kge,
-		//         mad, btm, min, nia, su (and ms)
 		const MONTHS_ID = {
 			januari:1, februari:2, maret:3, april:4, mei:5, juni:6,
 			juli:7, agustus:8, september:9, oktober:10, november:11, desember:12
 		};
 
-		// Combined Latin lookup (en + id/ms)
 		const MONTHS_LATIN = Object.assign( {}, MONTHS_EN, MONTHS_ID );
 
-		// CJK numeric months — 年/月/日 carry the structure, no name table needed
-
-		/* ── Safe date builder — avoids unreliable new Date(string) ── */
-
-		/**
-		 * Build a Date from explicit parts.
-		 * @param {number} year  Full 4-digit year
-		 * @param {number} month 1-based month
-		 * @param {number} day   1-based day
-		 * @param {number} [hour=0]
-		 * @param {number} [min=0]
-		 * @returns {Date|null}
-		 */
 		function makeDate( year, month, day, hour, min ) {
 			if ( year < 2001 || year > 2099 ) return null;
 			if ( month < 1   || month > 12  ) return null;
@@ -555,8 +490,7 @@
 
 		const dates = [];
 
-		/* ── Pattern 1 + 1b: ISO  2019-08-21T09:32:00Z
-		                          2026-05-22T13:24:57 ─────────────── */
+		/* Pattern 1 + 1b: ISO full / no-Z */
 		const RE_ISO_FULL = /\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z)?\b/g;
 		{
 			let m;
@@ -569,8 +503,7 @@
 			}
 		}
 
-		/* ── Pattern 2: ISO with space  2019-08-21 09:32 / 09.32 ──── */
-		// Avoid double-matching pattern 1 (no T before time)
+		/* Pattern 2: ISO with space */
 		const RE_ISO_SPACE = /\b(\d{4})-(\d{2})-(\d{2})\s+(\d{2})[.:](\d{2})\b(?![\d:Z])/g;
 		{
 			let m;
@@ -583,18 +516,7 @@
 			}
 		}
 
-		/* ── Pattern 3 + 3b + 3c + 4: Latin / Indonesian  ───────────
-		   Formats handled:
-		     09:32, 21 January 2019 (UTC)   ← DMY, time before  (en/id)
-		     21 January 2019 09:32 (UTC)    ← DMY, time after   (en/id)
-		     15 Mei 2026 03.18 (UTC)        ← DMY, dot sep      (id)
-		     15 Mei 2026 pukul 03.18 (UTC)  ← DMY, "pukul"      (id)
-		     13:24, May 22, 2026            ← MDY, time before  (en MDY)
-		     13:24, 2026 May 22             ← YMD, time before  (rare)
-		────────────────────────────────────────────────────────────── */
-
-		// 3 / 4 — DMY: optional leading time, day, month-word, year,
-		//              optional "pukul", optional trailing time
+		/* Pattern 3 / 4: DMY Latin / Indonesian */
 		const RE_LATIN = /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b(?:\s+(?:pukul\s+)?(\d{1,2})[.:](\d{2}))?/g;
 		{
 			let m;
@@ -602,20 +524,16 @@
 				const monthName = m[4].toLowerCase();
 				const monthNum  = MONTHS_LATIN[ monthName ];
 				if ( !monthNum ) continue;
-
 				const year  = parseInt( m[5], 10 );
 				const day   = parseInt( m[3], 10 );
-
-				// Prefer trailing time (m[6]/m[7]), then leading time (m[1]/m[2])
 				const hour = parseInt( m[6] || m[1] || '0', 10 );
 				const min  = parseInt( m[7] || m[2] || '0', 10 );
-
 				const d = makeDate( year, monthNum, day, hour, min );
 				if ( d ) dates.push( d );
 			}
 		}
 
-		// 3b — MDY: 13:24, May 22, 2026
+		/* Pattern 3b: MDY */
 		const RE_MDY = /\b(?:(\d{1,2}):(\d{2}),\s+)?([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})\b/g;
 		{
 			let m;
@@ -623,18 +541,16 @@
 				const monthName = m[3].toLowerCase();
 				const monthNum  = MONTHS_LATIN[ monthName ];
 				if ( !monthNum ) continue;
-
 				const day  = parseInt( m[4], 10 );
 				const year = parseInt( m[5], 10 );
 				const hour = parseInt( m[1] || '0', 10 );
 				const min  = parseInt( m[2] || '0', 10 );
-
 				const d = makeDate( year, monthNum, day, hour, min );
 				if ( d ) dates.push( d );
 			}
 		}
 
-		// 3c — YMD: 13:24, 2026 May 22
+		/* Pattern 3c: YMD */
 		const RE_YMD = /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/g;
 		{
 			let m;
@@ -642,19 +558,16 @@
 				const monthName = m[4].toLowerCase();
 				const monthNum  = MONTHS_LATIN[ monthName ];
 				if ( !monthNum ) continue;
-
-				// makeDate rejects m[3] values outside 2001–2099, guarding false matches
 				const year = parseInt( m[3], 10 );
 				const day  = parseInt( m[5], 10 );
 				const hour = parseInt( m[1] || '0', 10 );
 				const min  = parseInt( m[2] || '0', 10 );
-
 				const d = makeDate( year, monthNum, day, hour, min );
 				if ( d ) dates.push( d );
 			}
 		}
 
-		/* ── Pattern 5: Japanese  2014年5月22日 (木) 00:33 (UTC) ──── */
+		/* Pattern 5: Japanese */
 		const RE_JA = /(\d{4})年(\d{1,2})月(\d{1,2})日\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})/g;
 		{
 			let m;
@@ -667,10 +580,7 @@
 			}
 		}
 
-		/* ── Pattern 6: Chinese  02:25 2007年1月28日 (UTC) ────────── */
-		// Time may appear before or after the date.
-		// RE_JA also fires on 年月日 text — duplicates are harmless
-		// since Math.max picks the same value.
+		/* Pattern 6: Chinese */
 		const RE_ZH = /(?:(\d{1,2}):(\d{2})\s+)?(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s+(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2}))?/g;
 		{
 			let m;
@@ -678,17 +588,14 @@
 				const year  = parseInt( m[3], 10 );
 				const month = parseInt( m[4], 10 );
 				const day   = parseInt( m[5], 10 );
-				// Trailing time preferred, then leading
 				const hour = parseInt( m[6] || m[1] || '0', 10 );
 				const min  = parseInt( m[7] || m[2] || '0', 10 );
-
 				const d = makeDate( year, month, day, hour, min );
 				if ( d ) dates.push( d );
 			}
 		}
 
-		/* ── Year-only fallback ───────────────────────────────────── */
-		// Only used when none of the above matched anything.
+		/* Year-only fallback */
 		if ( !dates.length ) {
 			const RE_YEAR = /\b(20[012]\d)\b/g;
 			let m;
@@ -720,21 +627,11 @@
 	}
 
 	/* ── 11. Archive one or many threads — minimal saves ─────────── */
-	/**
-	 * archiveBatch( items, onProgress )
-	 *
-	 * Groups threads by destination archive page, then:
-	 *   - One save per archive page
-	 *   - One save to the talk page (removes all archived threads)
-	 *
-	 * Total edits = M archive pages + 1 talk page (not 2×N).
-	 */
 	async function archiveBatch( items, onProgress ) {
 		const report = onProgress || function () {};
 		const ok     = [];
 		const errors = [];
 
-		// Fetch talk page wikitext + baseTimestamp (once)
 		report( 'Fetching talk page wikitext…' );
 		const srcRes = await api.get( {
 			action: 'query', prop: 'revisions',
@@ -746,7 +643,6 @@
 		const baseTimestamp = srcPage.revisions[ 0 ].timestamp;
 		const srcTitle      = PAGE_NAME.replace( /_/g, ' ' );
 
-		// Group by destination archive page
 		const byArchive = new Map();
 		for ( const item of items ) {
 			if ( !byArchive.has( item.archiveTitle ) ) {
@@ -755,7 +651,6 @@
 			byArchive.get( item.archiveTitle ).push( item );
 		}
 
-		// For each archive page: fetch existing content, append threads, save
 		for ( const [ archiveTitle, arcItems ] of byArchive ) {
 			report( `Saving to ${archiveTitle}…` );
 			try {
@@ -789,7 +684,6 @@
 			}
 		}
 
-		// Remove successfully archived threads from talk page
 		const okSet = new Set( ok );
 		for ( const item of items ) {
 			if ( !okSet.has( item.thread.title ) ) continue;
@@ -798,7 +692,6 @@
 		}
 		srcText = srcText.replace( /\n{3,}/g, '\n\n' ).trim();
 
-		// Save talk page once
 		if ( ok.length > 0 ) {
 			report( 'Saving talk page…' );
 			const archivedList = ok.map( t => `"${t}"` ).join( ', ' );
@@ -814,7 +707,6 @@
 		return { ok, errors };
 	}
 
-	/** Wrapper for single-thread archiving (used by "Archive now" button). */
 	async function archiveThread( thread, archiveTitle ) {
 		const result = await archiveBatch(
 			[ { thread, archiveTitle } ],
@@ -823,7 +715,30 @@
 		if ( result.errors.length ) throw result.errors[ 0 ].err;
 	}
 
-	/* ── 12. Archive Manager panel ───────────────────────────────── */
+	/* ── 12. Empty notice dialog (no threads found) ───────────────── */
+	function openEmptyNotice() {
+		const { overlay, body, footer } = createDialog( {
+			title: 'Archive Manager',
+			icon:  '📦',
+			small: true
+		} );
+
+		const bodyPad = document.createElement( 'div' );
+		bodyPad.className = 'ta-dialog-body-pad';
+		bodyPad.innerHTML = `
+			<p style="margin:0">No level-2 sections were found on this talk page.</p>
+			<p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
+				TalkArchiver only detects threads marked with <code>== … ==</code> headings.
+			</p>`;
+		body.appendChild( bodyPad );
+
+		const footerRight = document.createElement( 'div' );
+		footerRight.className = 'ta-dialog-footer-right';
+		footer.appendChild( footerRight );
+		addFooterBtn( footerRight, 'Close', 'mw-ui-quiet', () => overlay.closeHandler() );
+	}
+
+	/* ── 13. Archive Manager panel ───────────────────────────────── */
 	async function openArchiveManager( allThreads ) {
 		const items = allThreads.map( t => ( {
 			thread: t,
@@ -843,7 +758,6 @@
 			onClose: () => {}
 		} );
 
-		/* Toolbar */
 		const toolbar = document.createElement( 'div' );
 		toolbar.className = 'ta-toolbar';
 
@@ -876,7 +790,6 @@
 		toolbar.appendChild( filterWrap );
 		body.appendChild( toolbar );
 
-		/* Table */
 		const tableWrap = document.createElement( 'div' );
 		const table = document.createElement( 'table' );
 		table.className = 'ta-thread-table';
@@ -895,7 +808,6 @@
 		tableWrap.appendChild( table );
 		body.appendChild( tableWrap );
 
-		/* Footer */
 		const footerInfo = document.createElement( 'div' );
 		footerInfo.className = 'ta-footer-info';
 		footerInfo.id = 'ta-footer-info';
@@ -919,7 +831,6 @@
 		footer.appendChild( footerInfo );
 		footer.appendChild( footerRight );
 
-		/* Helpers */
 		function getVisibleItems() {
 			if ( filterDays === 0 ) return items;
 			const cutoff = Date.now() - filterDays * 864e5;
@@ -970,8 +881,6 @@
 				const detectedYear = item.ts ? item.ts.getUTCFullYear() : new Date().getUTCFullYear();
 				const isOverride   = item.yearOverride && item.yearOverride !== detectedYear;
 				const yearSelCls   = isOverride ? 'ta-year-sel ta-year-override' : 'ta-year-sel';
-
-				// Use stripped title for display
 				const displayTitle = mw.html.escape( item.thread.titleClean );
 
 				tr.innerHTML = `
@@ -1010,14 +919,12 @@
 			updateFooterCount();
 		}
 
-		/* "Select all" checkbox */
 		chkAll.addEventListener( 'change', () => {
 			const vis = getVisibleItems();
 			vis.forEach( it => { it.selected = chkAll.checked; } );
 			renderTable();
 		} );
 
-		/* Filter select — attach after DOM insertion */
 		setTimeout( () => {
 			const sel = document.getElementById( 'ta-filter-sel' );
 			if ( sel ) sel.addEventListener( 'change', e => {
@@ -1027,7 +934,6 @@
 			} );
 		}, 0 );
 
-		/* Load timestamps — re-clickable to refresh */
 		loadTsBtn.addEventListener( 'click', async () => {
 			loadTsBtn.disabled = true;
 			loadTsBtn.textContent = '⏳ Loading…';
@@ -1039,7 +945,6 @@
 				const ts = await getThreadLastTimestamp( items[ i ].thread.content );
 				items[ i ].ts       = ts;
 				items[ i ].tsLoaded = true;
-				// Only update year if user hasn't manually overridden it
 				if ( !items[ i ].yearOverride ) {
 					items[ i ].year         = ts ? ts.getUTCFullYear() : new Date().getUTCFullYear();
 					items[ i ].archiveTitle = getArchiveTitle( items[ i ].year );
@@ -1052,7 +957,6 @@
 			loadTsBtn.textContent = '🔄 Refresh timestamps';
 		} );
 
-		/* Archive button */
 		archiveBtn.addEventListener( 'click', () => {
 			const selected = items.filter( it => it.selected );
 			if ( !selected.length ) return;
@@ -1062,7 +966,7 @@
 		renderTable();
 	}
 
-	/* ── 13. Bulk confirm dialog ─────────────────────────────────── */
+	/* ── 14. Bulk confirm dialog ─────────────────────────────────── */
 	function openBulkConfirm( selected, allItems, managerOverlay, renderTable, updateFooterCount, archiveBtn, cancelBtnOuter ) {
 		const { overlay, body, footer } = createDialog( {
 			title: `Confirm archiving ${selected.length} thread${selected.length !== 1 ? 's' : ''}`,
@@ -1150,7 +1054,7 @@
 		} );
 	}
 
-	/* ── 14. Single-thread "Archive now" button handler ──────────── */
+	/* ── 15. Single-thread "Archive now" button handler ──────────── */
 	async function onArchiveBtnClick( thread, btn ) {
 		btn.disabled = true;
 		btn.innerHTML = '<span class="ta-btn-spinner"></span>';
@@ -1245,7 +1149,7 @@
 		attachConfirm();
 	}
 
-	/* ── 15. Inject buttons ───────────────────────────────────────── */
+	/* ── 16. Inject buttons ───────────────────────────────────────── */
 	async function injectButtons() {
 		let wikitext;
 		try {
@@ -1258,19 +1162,31 @@
 		if ( !wikitext ) return;
 
 		const threads = parseThreads( wikitext );
-		if ( !threads.length ) return;
 
-		/* Floating Archive Manager button (FAB) */
+		/* ── FAB: always shown, adapts to thread count ──────────── */
 		if ( !document.getElementById( 'ta-fab' ) ) {
 			const fab = document.createElement( 'button' );
-			fab.id        = 'ta-fab';
-			fab.title     = `Archive Manager (${threads.length} thread${threads.length !== 1 ? 's' : ''})`;
-			fab.innerHTML = `📦<span id="ta-fab-badge">${threads.length}</span>`;
-			fab.addEventListener( 'click', () => openArchiveManager( threads ) );
+			fab.id    = 'ta-fab';
+			fab.title = threads.length
+				? `Archive Manager (${threads.length} thread${threads.length !== 1 ? 's' : ''})`
+				: 'Archive Manager — no threads found';
+			fab.innerHTML = threads.length
+				? `📦<span id="ta-fab-badge">${threads.length}</span>`
+				: `📦`;
+
+			fab.addEventListener( 'click', () => {
+				if ( !threads.length ) {
+					openEmptyNotice();
+				} else {
+					openArchiveManager( threads );
+				}
+			} );
 			document.body.appendChild( fab );
 		}
 
-		/* Small "Archive now" icon button per heading */
+		/* ── Per-heading "Archive now" buttons (only if threads exist) ── */
+		if ( !threads.length ) return;
+
 		const headings = Array.from( document.querySelectorAll( '#mw-content-text h2' ) );
 		headings.forEach( ( heading, i ) => {
 			const thread = threads[ i ];
@@ -1292,7 +1208,7 @@
 		} );
 	}
 
-	/* ── 16. Run after DOM ready ─────────────────────────────────── */
+	/* ── 17. Run after DOM ready ─────────────────────────────────── */
 	$( injectButtons );
 
 } )();
