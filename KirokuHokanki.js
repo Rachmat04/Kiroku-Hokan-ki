@@ -604,6 +604,48 @@
 			'buleuen siblaih': 11,
 			'buleuen duwa blah': 12
 		};
+		const MONTHS_ARZ = {
+			'يناير': 1,
+			'فبراير': 2,
+			'مارس': 3,
+			'أبريل': 4,
+			'مايو': 5,
+			'يونيو': 6,
+			'يوليو': 7,
+			'أغسطس': 8,
+			'سبتمبر': 9,
+			'أكتوبر': 10,
+			'نوفمبر': 11,
+			'ديسمبر': 12
+		};
+		const MONTHS_UR = {
+			'جنوری': 1,
+			'فروری': 2,
+			'مارچ': 3,
+			'اپریل': 4,
+			'مئی': 5,
+			'جون': 6,
+			'جولائی': 7,
+			'اگست': 8,
+			'ستمبر': 9,
+			'اکتوبر': 10,
+			'نومبر': 11,
+			'دسمبر': 12
+		};
+		const MONTHS_BAN = {
+			'januari': 1,
+			'pébruari': 2,
+			'maret': 3,
+			'april': 4,
+			'méi': 5,
+			'juni': 6,
+			'juli': 7,
+			'agustus': 8,
+			'séptémber': 9,
+			'oktober': 10,
+			'nopémber': 11,
+			'désémber': 12
+		};
 
 		const MONTHS_LATIN = Object.assign({}, MONTHS_EN, MONTHS_ID, MONTHS_AR, MONTHS_HE, MONTHS_HI, MONTHS_PNB, MONTHS_BN, MONTHS_GOR_MIN);
 
@@ -816,7 +858,7 @@
 			let m;
 			while ((m = RE_KO.exec(threadContent)) !== null) {
 				const year = parseInt(m[1], 10);
-				const month = parseInt(m[2], 10); 
+				const month = parseInt(m[2], 10);
 				const day = parseInt(m[3], 10);
 				const hour = parseInt(m[4], 10);
 				const min = parseInt(m[5], 10);
@@ -832,7 +874,7 @@
 				if (!str) return 0;
 				return parseInt(str.replace(/[\u09E6-\u09EF]/g, d => d.charCodeAt(0) - 0x09E6), 10);
 			}
-			
+
 			let m;
 			while ((m = RE_BN.exec(threadContent)) !== null) {
 				const hour = bnToNum(m[1]);
@@ -878,6 +920,61 @@
 				if (!monthNum) continue;
 				const d = makeDate(year, monthNum, day, hour, min);
 				if (d) dates.push(d);
+			}
+		}
+
+		/* Pattern 16: Egyptian Arabic (arz.wikipedia) - HH:MM، D MonthName YYYY (UTC) */
+		const RE_ARZ = /(\d{1,2}):(\d{2})،\s*(\d{1,2})\s+([\u0600-\u06FF]+)\s+(\d{4})/g;
+		{
+			let m;
+			while ((m = RE_ARZ.exec(threadContent)) !== null) {
+				const hour = parseInt(m[1], 10);
+				const min = parseInt(m[2], 10);
+				const day = parseInt(m[3], 10);
+				const monthName = m[4];
+				const year = parseInt(m[5], 10);
+				const monthNum = MONTHS_ARZ[monthName];
+				if (monthNum) {
+					const d = makeDate(year, monthNum, day, hour, min);
+					if (d) dates.push(d);
+				}
+			}
+		}
+
+		/* Pattern 17: Urdu (ur.wikipedia) - HH:MM، D MonthName YYYYء (UTC) */
+		const RE_UR = /(\d{1,2}):(\d{2})،\s*(\d{1,2})\s+([\u0600-\u06FF]+)\s+(\d{4})ء/g;
+		{
+			let m;
+			while ((m = RE_UR.exec(threadContent)) !== null) {
+				const hour = parseInt(m[1], 10);
+				const min = parseInt(m[2], 10);
+				const day = parseInt(m[3], 10);
+				const monthName = m[4];
+				const year = parseInt(m[5], 10);
+				const monthNum = MONTHS_UR[monthName];
+				if (monthNum) {
+					const d = makeDate(year, monthNum, day, hour, min);
+					if (d) dates.push(d);
+				}
+			}
+		}
+
+		/* Pattern 18: Balinese (ban.wikipedia) - D Month YYYY HH.MM (WITA) */
+		const RE_BAN = /\b(\d{1,2})\s+([A-Za-zéè]+)\s+(\d{4})\s+(\d{1,2})[.:](\d{2})(?:\s*\(WITA\))?/gi;
+		{
+			let m;
+			while ((m = RE_BAN.exec(threadContent)) !== null) {
+				const day = parseInt(m[1], 10);
+				const monthName = m[2].toLowerCase();
+				const year = parseInt(m[3], 10);
+				const hour = parseInt(m[4], 10);
+				const min = parseInt(m[5], 10);
+
+				const monthNum = MONTHS_BAN[monthName];
+				if (monthNum) {
+					const d = makeDate(year, monthNum, day, hour, min);
+					if (d) dates.push(d);
+				}
 			}
 		}
 
