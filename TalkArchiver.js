@@ -1,5 +1,5 @@
 /**
- * [TALKARCHIVER — RACHMAT04 — GLOBAL JS (meta.wikimedia.org)]
+ * [KIROKU HOKAN-KI — RACHMAT04 — GLOBAL JS (meta.wikimedia.org)]
  *
  * •==============================================•
  * > Type     : JavaScript (MediaWiki Global JS)
@@ -590,6 +590,20 @@
 			'mai': 5,
 			'nopember': 11
 		};
+		const MONTHS_ACE = {
+			'buleuen sa': 1,
+			'buleuen duwa': 2,
+			'buleuen lhèe': 3,
+			'buleuen peuet': 4,
+			'buleuen limöng': 5,
+			'buleuen nam': 6,
+			'buleuen tujôh': 7,
+			'buleuen lapan': 8,
+			'buleuen sikureueng': 9,
+			'buleuen siplôh': 10,
+			'buleuen siblaih': 11,
+			'buleuen duwa blah': 12
+		};
 
 		const MONTHS_LATIN = Object.assign({}, MONTHS_EN, MONTHS_ID, MONTHS_AR, MONTHS_HE, MONTHS_HI, MONTHS_PNB, MONTHS_BN, MONTHS_GOR_MIN);
 
@@ -850,6 +864,23 @@
 			}
 		}
 
+		/* Pattern 15: Acehnese (ace.wikipedia) - D MonthName YYYY HH.MM (TZ) */
+		const RE_ACE = /\b(\d{1,2})\s+(buleuen\s+(?:sa|duwa\s+blah|duwa|lhèe|peuet|limöng|nam|tujôh|lapan|sikureueng|siplôh|siblaih))\s+(\d{4})\s+(\d{1,2})[.:](\d{2})(?:\s*\([A-Za-z]+\))?/gi;
+		{
+			let m;
+			while ((m = RE_ACE.exec(threadContent)) !== null) {
+				const day = parseInt(m[1], 10);
+				const monthName = m[2].toLowerCase().replace(/\s+/g, ' ');
+				const year = parseInt(m[3], 10);
+				const hour = parseInt(m[4], 10);
+				const min = parseInt(m[5], 10);
+				const monthNum = MONTHS_ACE[monthName];
+				if (!monthNum) continue;
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
+			}
+		}
+
 		/* Year-only fallback */
 		if (!dates.length) {
 			const RE_YEAR = /\b(20[012]\d)\b/g;
@@ -925,11 +956,11 @@
 					action: 'edit',
 					title: archiveTitle,
 					text: arcText.trim(),
-					summary: `Archived from [[${srcTitle}]]: ${archivedTitles}`
+					summary: `Archived from [[${srcTitle}]]: ${archivedTitles} (via [[m:User:Rachmat04/KirokuHokanki.js|Kiroku Hokan-ki]])`
 				});
 				arcItems.forEach(it => ok.push(it.thread.title));
 			} catch (err) {
-				console.error('[TalkArchiver:Rachmat04] archive page error', err);
+				console.error('[Kiroku Hokan-ki:Rachmat04] archive page error', err);
 				arcItems.forEach(it => errors.push({
 					title: it.thread.title,
 					err
@@ -952,7 +983,7 @@
 				action: 'edit',
 				title: PAGE_NAME,
 				text: srcText,
-				summary: `Archived ${ok.length} section(s): ${archivedList}`,
+				summary: `Archived ${ok.length} section(s): ${archivedList} (via [[m:User:Rachmat04/KirokuHokanki.js|Kiroku Hokan-ki]])`,
 				basetimestamp: baseTimestamp
 			});
 		}
@@ -986,7 +1017,7 @@
 		bodyPad.innerHTML = `
 			<p style="margin:0">No level-2 sections were found on this talk page.</p>
 			<p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
-				TalkArchiver only detects threads marked with <code>== … ==</code> headings.
+				Kiroku Hokan-ki only detects threads marked with <code>== … ==</code> headings.
 			</p>`;
 		body.appendChild(bodyPad);
 		const footerRight = document.createElement('div');
@@ -1271,7 +1302,7 @@
 					}
 				);
 			} catch (fatalErr) {
-				console.error('[TalkArchiver:Rachmat04] fatal batch error', fatalErr);
+				console.error('[Kiroku Hokan-ki:Rachmat04] fatal batch error', fatalErr);
 				batchResult = {
 					ok: [],
 					errors: selected.map(it => ({
@@ -1400,7 +1431,7 @@
 						location.reload();
 					});
 				} catch (e) {
-					console.error('[TalkArchiver:Rachmat04]', e);
+					console.error('[Kiroku Hokan-ki:Rachmat04]', e);
 					const p2 = bodyPad.querySelector('#ta-prog2');
 					if (p2) p2.textContent = '❌ Failed. Check the browser console.';
 					confirmBtn.disabled = false;
