@@ -16,52 +16,49 @@
  * •==============================================•
  */
 // <nowiki>
-( function () {
+(function() {
 	'use strict';
 
 	/* ── 0. Guard: Rachmat04 only ─────────────────────────────────── */
-	const cfg     = mw.config.get();
+	const cfg = mw.config.get();
 	const curUser = cfg.wgUserName;
-	if ( curUser !== 'Rachmat04' ) return;
+	if (curUser !== 'Rachmat04') return;
 
 	/* ── 1. Guard: User talk:Rachmat04 only ──────────────────────── */
-	if ( cfg.wgNamespaceNumber !== 3 ) return;
-	if ( cfg.wgTitle !== 'Rachmat04' ) return;
+	if (cfg.wgNamespaceNumber !== 3) return;
+	if (cfg.wgTitle !== 'Rachmat04') return;
 	if (
 		cfg.wgAction === 'history' ||
 		cfg.wgDiffNewId ||
 		cfg.wgDiffOldId ||
 		cfg.wgCurRevisionId !== cfg.wgRevisionId
 	) return;
-
-	const api       = new mw.Api();
+	const api = new mw.Api();
 	const PAGE_NAME = cfg.wgPageName;
 
 	/* ── 2. Archive subpage name based on subdomain ───────────────── */
 	function getArchiveSubpage() {
-		const subdomain = window.location.hostname.split( '.' )[ 0 ];
-		const ARSIP_WIKIS = new Set( [
-			'id', 'ace', 'ban', 'bjn', 'map-bms', 'bbc', 'bew',
-			'bug', 'gor', 'jv', 'kge', 'mad', 'btm', 'min', 'nia', 'su'
-		] );
-		return ARSIP_WIKIS.has( subdomain ) ? 'Arsip' : 'Archives';
+		const subdomain = window.location.hostname.split('.')[0];
+		const ARSIP_WIKIS = new Set([
+			'id', 'ace', 'ban', 'bjn', 'map-bms', 'bbc', 'bew', 'bug', 'gor', 'jv', 'kge', 'mad', 'btm', 'min', 'nia', 'su'
+		]);
+		return ARSIP_WIKIS.has(subdomain) ? 'Arsip' : 'Archives';
 	}
-
 	const ARCHIVE_SUBPAGE = getArchiveSubpage();
 
 	/* ── 3. Strip wikilinks from a title string ───────────────────── */
-	function stripWikilinks( title ) {
-		let out = title.replace( /\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2' );
-		out = out.replace( /\[\[([^\]]+)\]\]/g, ( _m, target ) => {
-			const parts = target.split( /[:\/]/ );
-			return parts[ parts.length - 1 ].trim();
-		} );
-		out = out.replace( /<[^>]+>/g, '' );
+	function stripWikilinks(title) {
+		let out = title.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2');
+		out = out.replace(/\[\[([^\]]+)\]\]/g, (_m, target) => {
+			const parts = target.split(/[:\/]/);
+			return parts[parts.length - 1].trim();
+		});
+		out = out.replace(/<[^>]+>/g, '');
 		return out.trim();
 	}
 
 	/* ── 4. CSS ───────────────────────────────────────────────────── */
-	mw.util.addCSS( `
+	mw.util.addCSS(`
 		.ta-btn {
 			display: inline-flex;
 			align-items: center;
@@ -363,433 +360,498 @@
 			.ta-btn { border-color:#54595d; color:#eaecf0; }
 			.ta-btn:hover { background:#252535; border-color:#6699ff; }
 		}
-	` );
+	`);
 
 	/* ── 5. Overlay stack — tracks open dialogs for Esc-to-close ──── */
 	const overlayStack = [];
-
-	document.addEventListener( 'keydown', e => {
-		if ( e.key !== 'Escape' ) return;
-		const top = overlayStack[ overlayStack.length - 1 ];
-		if ( !top ) return;
+	document.addEventListener('keydown', e => {
+		if (e.key !== 'Escape') return;
+		const top = overlayStack[overlayStack.length - 1];
+		if (!top) return;
 		top.closeHandler();
-	} );
+	});
 
 	/* ── 6. Dialog utilities ──────────────────────────────────────── */
 	function createOverlay() {
-		const overlay = document.createElement( 'div' );
+		const overlay = document.createElement('div');
 		overlay.className = 'ta-overlay';
-		document.body.appendChild( overlay );
-
+		document.body.appendChild(overlay);
 		overlay.closeHandler = () => {
 			overlay.remove();
-			const idx = overlayStack.indexOf( overlay );
-			if ( idx !== -1 ) overlayStack.splice( idx, 1 );
+			const idx = overlayStack.indexOf(overlay);
+			if (idx !== -1) overlayStack.splice(idx, 1);
 		};
-
-		overlayStack.push( overlay );
+		overlayStack.push(overlay);
 		return overlay;
 	}
 
-	function createDialog( opts ) {
+	function createDialog(opts) {
 		const overlay = createOverlay();
-
 		overlay.closeHandler = () => {
 			overlay.remove();
-			const idx = overlayStack.indexOf( overlay );
-			if ( idx !== -1 ) overlayStack.splice( idx, 1 );
-			if ( opts.onClose ) opts.onClose();
+			const idx = overlayStack.indexOf(overlay);
+			if (idx !== -1) overlayStack.splice(idx, 1);
+			if (opts.onClose) opts.onClose();
 		};
-
-		const dialog = document.createElement( 'div' );
-		dialog.className = 'ta-dialog' + ( opts.small ? ' ta-dialog-sm' : '' );
-
-		const header = document.createElement( 'div' );
+		const dialog = document.createElement('div');
+		dialog.className = 'ta-dialog' + (opts.small ? ' ta-dialog-sm' :
+			'');
+		const header = document.createElement('div');
 		header.className = 'ta-dialog-header';
-		header.innerHTML = `<div class="ta-dialog-header-left">${opts.icon || '📦'} ${mw.html.escape( opts.title )}</div>`;
-
-		const closeBtn = document.createElement( 'button' );
+		header.innerHTML =
+			`<div class="ta-dialog-header-left">${opts.icon || '📦'} ${mw.html.escape( opts.title )}</div>`;
+		const closeBtn = document.createElement('button');
 		closeBtn.className = 'ta-dialog-close';
 		closeBtn.textContent = '✕';
 		closeBtn.title = 'Close';
-		closeBtn.addEventListener( 'click', () => overlay.closeHandler() );
-		header.appendChild( closeBtn );
-
-		const body   = document.createElement( 'div' );
+		closeBtn.addEventListener('click', () => overlay.closeHandler());
+		header.appendChild(closeBtn);
+		const body = document.createElement('div');
 		body.className = 'ta-dialog-body';
-
-		const footer = document.createElement( 'div' );
+		const footer = document.createElement('div');
 		footer.className = 'ta-dialog-footer';
-
-		dialog.appendChild( header );
-		dialog.appendChild( body );
-		dialog.appendChild( footer );
-		overlay.appendChild( dialog );
-
-		overlay.addEventListener( 'click', e => {
-			if ( e.target === overlay ) overlay.closeHandler();
-		} );
-
-		return { overlay, dialog, header, body, footer };
+		dialog.appendChild(header);
+		dialog.appendChild(body);
+		dialog.appendChild(footer);
+		overlay.appendChild(dialog);
+		overlay.addEventListener('click', e => {
+			if (e.target === overlay) overlay.closeHandler();
+		});
+		return {
+			overlay,
+			dialog,
+			header,
+			body,
+			footer
+		};
 	}
 
-	function addFooterBtn( container, label, cls, onClick ) {
-		const b = document.createElement( 'button' );
-		b.className   = `mw-ui-button ${cls}`;
+	function addFooterBtn(container, label, cls, onClick) {
+		const b = document.createElement('button');
+		b.className = `mw-ui-button ${cls}`;
 		b.textContent = label;
-		b.addEventListener( 'click', onClick );
-		container.appendChild( b );
+		b.addEventListener('click', onClick);
+		container.appendChild(b);
 		return b;
 	}
 
 	/* ── 7. Parse level-2 threads ────────────────────────────────── */
-	function parseThreads( wikitext ) {
-		const re  = /^==\s*([^=\n][^\n]*?)\s*==\s*$/gm;
+	function parseThreads(wikitext) {
+		const re = /^==\s*([^=\n][^\n]*?)\s*==\s*$/gm;
 		const pos = [];
 		let m;
-		while ( ( m = re.exec( wikitext ) ) !== null ) {
-			pos.push( { title: m[ 1 ].trim(), start: m.index } );
+		while ((m = re.exec(wikitext)) !== null) {
+			pos.push({
+				title: m[1].trim(),
+				start: m.index
+			});
 		}
-		pos.push( { title: null, start: wikitext.length } );
-
-		return pos.slice( 0, -1 ).map( ( p, i ) => ( {
-			title:       p.title,
-			titleClean:  stripWikilinks( p.title ),
-			content:     wikitext.substring( p.start, pos[ i + 1 ].start ),
-			start:       p.start,
-			end:         pos[ i + 1 ].start
-		} ) );
+		pos.push({
+			title: null,
+			start: wikitext.length
+		});
+		return pos.slice(0, -1).map((p, i) => ({
+			title: p.title,
+			titleClean: stripWikilinks(p.title),
+			content: wikitext.substring(p.start, pos[i + 1]
+				.start),
+			start: p.start,
+			end: pos[i + 1].start
+		}));
 	}
 
 	/* ── 8. Get last timestamp from thread signatures ────────────── */
-	async function getThreadLastTimestamp( threadContent ) {
-
+	async function getThreadLastTimestamp(threadContent) {
 		const MONTHS_EN = {
-			january:1, february:2, march:3, april:4, may:5, june:6,
-			july:7, august:8, september:9, october:10, november:11, december:12,
-			jan:1, feb:2, mar:3, apr:4, jun:6, jul:7, aug:8,
-			sep:9, sept:9, oct:10, nov:11, dec:12
+			january: 1,
+			february: 2,
+			march: 3,
+			april: 4,
+			may: 5,
+			june: 6,
+			july: 7,
+			august: 8,
+			september: 9,
+			october: 10,
+			november: 11,
+			december: 12,
+			jan: 1,
+			feb: 2,
+			mar: 3,
+			apr: 4,
+			jun: 6,
+			jul: 7,
+			aug: 8,
+			sep: 9,
+			sept: 9,
+			oct: 10,
+			nov: 11,
+			dec: 12
 		};
-
 		const MONTHS_ID = {
-			januari:1, februari:2, maret:3, april:4, mei:5, juni:6,
-			juli:7, agustus:8, september:9, oktober:10, november:11, desember:12
+			januari: 1,
+			februari: 2,
+			maret: 3,
+			april: 4,
+			mei: 5,
+			juni: 6,
+			juli: 7,
+			agustus: 8,
+			september: 9,
+			oktober: 10,
+			november: 11,
+			desember: 12
 		};
+		const MONTHS_AR = {
+			'يناير': 1,
+			'فبراير': 2,
+			'مارس': 3,
+			'أبريل': 4,
+			'مايو': 5,
+			'يونيو': 6,
+			'يوليو': 7,
+			'أغسطس': 8,
+			'سبتمبر': 9,
+			'أكتوبر': 10,
+			'نوفمبر': 11,
+			'ديسمبر': 12
+		};
+		// Gabungkan semua objek bulan
+		const MONTHS_LATIN = Object.assign({}, MONTHS_EN, MONTHS_ID, MONTHS_AR);
 
-		const MONTHS_LATIN = Object.assign( {}, MONTHS_EN, MONTHS_ID );
-
-		function makeDate( year, month, day, hour, min ) {
-			if ( year < 2001 || year > 2099 ) return null;
-			if ( month < 1   || month > 12  ) return null;
-			if ( day   < 1   || day   > 31  ) return null;
-			return new Date( Date.UTC(
-				year, month - 1, day,
-				( hour || 0 ), ( min || 0 ), 0
-			) );
+		function makeDate(year, month, day, hour, min) {
+			if (year < 2001 || year > 2099) return null;
+			if (month < 1 || month > 12) return null;
+			if (day < 1 || day > 31) return null;
+			return new Date(Date.UTC(
+				year, month - 1, day, (hour || 0), (min || 0), 0
+			));
 		}
-
 		const dates = [];
-
 		/* Pattern 1 + 1b: ISO full / no-Z */
-		const RE_ISO_FULL = /\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z)?\b/g;
+		const RE_ISO_FULL =
+			/\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z)?\b/g;
 		{
 			let m;
-			while ( ( m = RE_ISO_FULL.exec( threadContent ) ) !== null ) {
+			while ((m = RE_ISO_FULL.exec(threadContent)) !== null) {
 				const d = makeDate(
-					parseInt( m[1], 10 ), parseInt( m[2], 10 ), parseInt( m[3], 10 ),
-					parseInt( m[4], 10 ), parseInt( m[5], 10 )
+					parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[4], 10), parseInt(m[5], 10)
 				);
-				if ( d ) dates.push( d );
+				if (d) dates.push(d);
 			}
 		}
-
 		/* Pattern 2: ISO with space */
-		const RE_ISO_SPACE = /\b(\d{4})-(\d{2})-(\d{2})\s+(\d{2})[.:](\d{2})\b(?![\d:Z])/g;
+		const RE_ISO_SPACE =
+			/\b(\d{4})-(\d{2})-(\d{2})\s+(\d{2})[.:](\d{2})\b(?!\d|:Z)/g;
 		{
 			let m;
-			while ( ( m = RE_ISO_SPACE.exec( threadContent ) ) !== null ) {
+			while ((m = RE_ISO_SPACE.exec(threadContent)) !== null) {
 				const d = makeDate(
-					parseInt( m[1], 10 ), parseInt( m[2], 10 ), parseInt( m[3], 10 ),
-					parseInt( m[4], 10 ), parseInt( m[5], 10 )
+					parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[4], 10), parseInt(m[5], 10)
 				);
-				if ( d ) dates.push( d );
+				if (d) dates.push(d);
 			}
 		}
-
 		/* Pattern 3 / 4: DMY Latin / Indonesian */
-		const RE_LATIN = /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b(?:\s+(?:pukul\s+)?(\d{1,2})[.:](\d{2}))?/g;
+		const RE_LATIN =
+			/\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b(?:\s+(?:pukul\s+)?(\d{1,2})[.:](\d{2}))?/g;
 		{
 			let m;
-			while ( ( m = RE_LATIN.exec( threadContent ) ) !== null ) {
+			while ((m = RE_LATIN.exec(threadContent)) !== null) {
 				const monthName = m[4].toLowerCase();
-				const monthNum  = MONTHS_LATIN[ monthName ];
-				if ( !monthNum ) continue;
-				const year  = parseInt( m[5], 10 );
-				const day   = parseInt( m[3], 10 );
-				const hour = parseInt( m[6] || m[1] || '0', 10 );
-				const min  = parseInt( m[7] || m[2] || '0', 10 );
-				const d = makeDate( year, monthNum, day, hour, min );
-				if ( d ) dates.push( d );
+				const monthNum = MONTHS_LATIN[monthName];
+				if (!monthNum) continue;
+				const year = parseInt(m[5], 10);
+				const day = parseInt(m[3], 10);
+				const hour = parseInt(m[6] || m[1] || '0', 10);
+				const min = parseInt(m[7] || m[2] || '0', 10);
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
 			}
 		}
-
 		/* Pattern 3b: MDY */
-		const RE_MDY = /\b(?:(\d{1,2}):(\d{2}),\s+)?([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})\b/g;
+		const RE_MDY =
+			/\b(?:(\d{1,2}):(\d{2}),\s+)?([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})\b/g;
 		{
 			let m;
-			while ( ( m = RE_MDY.exec( threadContent ) ) !== null ) {
+			while ((m = RE_MDY.exec(threadContent)) !== null) {
 				const monthName = m[3].toLowerCase();
-				const monthNum  = MONTHS_LATIN[ monthName ];
-				if ( !monthNum ) continue;
-				const day  = parseInt( m[4], 10 );
-				const year = parseInt( m[5], 10 );
-				const hour = parseInt( m[1] || '0', 10 );
-				const min  = parseInt( m[2] || '0', 10 );
-				const d = makeDate( year, monthNum, day, hour, min );
-				if ( d ) dates.push( d );
+				const monthNum = MONTHS_LATIN[monthName];
+				if (!monthNum) continue;
+				const day = parseInt(m[4], 10);
+				const year = parseInt(m[5], 10);
+				const hour = parseInt(m[1] || '0', 10);
+				const min = parseInt(m[2] || '0', 10);
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
 			}
 		}
-
 		/* Pattern 3c: YMD */
-		const RE_YMD = /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/g;
+		const RE_YMD =
+			/\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/g;
 		{
 			let m;
-			while ( ( m = RE_YMD.exec( threadContent ) ) !== null ) {
+			while ((m = RE_YMD.exec(threadContent)) !== null) {
 				const monthName = m[4].toLowerCase();
-				const monthNum  = MONTHS_LATIN[ monthName ];
-				if ( !monthNum ) continue;
-				const year = parseInt( m[3], 10 );
-				const day  = parseInt( m[5], 10 );
-				const hour = parseInt( m[1] || '0', 10 );
-				const min  = parseInt( m[2] || '0', 10 );
-				const d = makeDate( year, monthNum, day, hour, min );
-				if ( d ) dates.push( d );
+				const monthNum = MONTHS_LATIN[monthName];
+				if (!monthNum) continue;
+				const year = parseInt(m[3], 10);
+				const day = parseInt(m[5], 10);
+				const hour = parseInt(m[1] || '0', 10);
+				const min = parseInt(m[2] || '0', 10);
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
 			}
 		}
-
 		/* Pattern 5: Japanese */
-		const RE_JA = /(\d{4})年(\d{1,2})月(\d{1,2})日\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})/g;
+		const RE_JA =
+			/(\d{4})年(\d{1,2})月(\d{1,2})日\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})/g;
 		{
 			let m;
-			while ( ( m = RE_JA.exec( threadContent ) ) !== null ) {
+			while ((m = RE_JA.exec(threadContent)) !== null) {
 				const d = makeDate(
-					parseInt( m[1], 10 ), parseInt( m[2], 10 ), parseInt( m[3], 10 ),
-					parseInt( m[4], 10 ), parseInt( m[5], 10 )
+					parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[4], 10), parseInt(m[5], 10)
 				);
-				if ( d ) dates.push( d );
+				if (d) dates.push(d);
 			}
 		}
-
 		/* Pattern 6: Chinese */
-		const RE_ZH = /(?:(\d{1,2}):(\d{2})\s+)?(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s+(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2}))?/g;
+		const RE_ZH =
+			/(?:(\d{1,2}):(\d{2})\s+)?(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2}))?/g;
 		{
 			let m;
-			while ( ( m = RE_ZH.exec( threadContent ) ) !== null ) {
-				const year  = parseInt( m[3], 10 );
-				const month = parseInt( m[4], 10 );
-				const day   = parseInt( m[5], 10 );
-				const hour = parseInt( m[6] || m[1] || '0', 10 );
-				const min  = parseInt( m[7] || m[2] || '0', 10 );
-				const d = makeDate( year, month, day, hour, min );
-				if ( d ) dates.push( d );
+			while ((m = RE_ZH.exec(threadContent)) !== null) {
+				const year = parseInt(m[3], 10);
+				const month = parseInt(m[4], 10);
+				const day = parseInt(m[5], 10);
+				const hour = parseInt(m[6] || m[1] || '0', 10);
+				const min = parseInt(m[7] || m[2] || '0', 10);
+				const d = makeDate(year, month, day, hour, min);
+				if (d) dates.push(d);
 			}
 		}
-
 		/* Pattern 7: zh-min-nan */
-		const RE_ZH_MN = /(\d{4})[\s-]*nî[\s-]*(\d{1,2})[\s-]*goe̍h[\s-]*(\d{1,2})[\s-]*ji̍t(?:\s*\(.*?\))?\s*(\d{1,2}):(\d{2})(?:\s*\(UTC\))?/g
+		const RE_ZH_MN =
+			/(\d{4})[\s-]*nî[\s-]*(\d{1,2})[\s-]*goe̍h[\s-]*(\d{1,2})[\s-]*ji̍t(?:\s*\(.*?\))?\s*(\d{1,2}):(\d{2})(?:\s*\(UTC\))?/g;
 		{
 			let m;
-			while ( ( m = RE_ZH_MN.exec( threadContent ) ) !== null ) {
-				const year  = parseInt( m[1], 10 );
-				const month = parseInt( m[2], 10 );
-				const day   = parseInt( m[3], 10 );
-				const hour  = parseInt( m[4], 10 );
-				const min   = parseInt( m[5], 10 );
-				const d = makeDate( year, month, day, hour, min );
-				if ( d ) dates.push( d );
+			while ((m = RE_ZH_MN.exec(threadContent)) !== null) {
+				const year = parseInt(m[1], 10);
+				const month = parseInt(m[2], 10);
+				const day = parseInt(m[3], 10);
+				const hour = parseInt(m[4], 10);
+				const min = parseInt(m[5], 10);
+				const d = makeDate(year, month, day, hour, min);
+				if (d) dates.push(d);
 			}
 		}
-
+		/* Pattern 8: Arabic (ar.wikipedia.org) - HH:MM, D MonthName YYYY (ت ع م) */
+		const RE_AR =
+			/(\d{1,2}):(\d{2})،\s*(\d{1,2})\s+([\u0600-\u06FF]+)\s+(\d{4})(?:\s*\(ت\s*ع\s*م\))?/g;
+		{
+			let m;
+			while ((m = RE_AR.exec(threadContent)) !== null) {
+				const hour = parseInt(m[1], 10);
+				const min = parseInt(m[2], 10);
+				const day = parseInt(m[3], 10);
+				const monthName = m[4]; // Month name in Arabic
+				const year = parseInt(m[5], 10);
+				const monthNum = MONTHS_LATIN[
+					monthName]; // Use the merged MONTHS_LATIN
+				if (!monthNum) continue;
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
+			}
+		}
 		/* Year-only fallback */
-		if ( !dates.length ) {
+		if (!dates.length) {
 			const RE_YEAR = /\b(20[012]\d)\b/g;
 			let m;
-			while ( ( m = RE_YEAR.exec( threadContent ) ) !== null ) {
-				const year = parseInt( m[1], 10 );
-				if ( year >= 2001 && year <= 2099 ) {
-					dates.push( new Date( Date.UTC( year, 0, 1 ) ) );
+			while ((m = RE_YEAR.exec(threadContent)) !== null) {
+				const year = parseInt(m[1], 10);
+				if (year >= 2001 && year <= 2099) {
+					dates.push(new Date(Date.UTC(year, 0, 1)));
 				}
 			}
 		}
-
-		if ( !dates.length ) return null;
-		return new Date( Math.max( ...dates.map( d => d.getTime() ) ) );
-	}
+		if (!dates.length) return null;
+		return new Date(Math.max(...dates.map(d => d.getTime())));
+	} // async function getThreadLastTimestamp( threadContent )
 
 	/* ── 9. Archive page title helper ────────────────────────────── */
-	function getArchiveTitle( year ) {
+	function getArchiveTitle(year) {
 		return `${PAGE_NAME.replace( /_/g, ' ' )}/${ARCHIVE_SUBPAGE}/${year}`;
 	}
 
 	/* ── 10. Build year <option> elements ─────────────────────────── */
-	function buildYearOptions( selectedYear ) {
+	function buildYearOptions(selectedYear) {
 		const cur = new Date().getUTCFullYear();
-		let html  = '';
-		for ( let y = cur + 1; y >= cur - 20; y-- ) {
-			html += `<option value="${y}" ${y === selectedYear ? 'selected' : ''}>${y}</option>`;
+		let html = '';
+		for (let y = cur + 1; y >= cur - 20; y--) {
+			html +=
+				`<option value="${y}" ${y === selectedYear ? 'selected' : ''}>${y}</option>`;
 		}
 		return html;
 	}
 
 	/* ── 11. Archive one or many threads — minimal saves ─────────── */
-	async function archiveBatch( items, onProgress ) {
-		const report = onProgress || function () {};
-		const ok     = [];
+	async function archiveBatch(items, onProgress) {
+		const report = onProgress || function() {};
+		const ok = [];
 		const errors = [];
-
-		report( 'Fetching talk page wikitext…' );
-		const srcRes = await api.get( {
-			action: 'query', prop: 'revisions',
-			rvprop: [ 'content', 'timestamp' ],
-			titles: PAGE_NAME, formatversion: 2
-		} );
-		const srcPage       = srcRes.query.pages[ 0 ];
-		let   srcText       = srcPage.revisions[ 0 ].content;
-		const baseTimestamp = srcPage.revisions[ 0 ].timestamp;
-		const srcTitle      = PAGE_NAME.replace( /_/g, ' ' );
-
+		report('Fetching talk page wikitext…');
+		const srcRes = await api.get({
+			action: 'query',
+			prop: 'revisions',
+			rvprop: ['content', 'timestamp'],
+			titles: PAGE_NAME,
+			formatversion: 2
+		});
+		const srcPage = srcRes.query.pages[0];
+		let srcText = srcPage.revisions[0].content;
+		const baseTimestamp = srcPage.revisions[0].timestamp;
+		const srcTitle = PAGE_NAME.replace(/_/g, ' ');
 		const byArchive = new Map();
-		for ( const item of items ) {
-			if ( !byArchive.has( item.archiveTitle ) ) {
-				byArchive.set( item.archiveTitle, [] );
+		for (const item of items) {
+			if (!byArchive.has(item.archiveTitle)) {
+				byArchive.set(item.archiveTitle, []);
 			}
-			byArchive.get( item.archiveTitle ).push( item );
+			byArchive.get(item.archiveTitle).push(item);
 		}
-
-		for ( const [ archiveTitle, arcItems ] of byArchive ) {
-			report( `Saving to ${archiveTitle}…` );
+		for (const [archiveTitle, arcItems] of byArchive) {
+			report(`Saving to ${archiveTitle}…`);
 			try {
-				const arcRes = await api.get( {
-					action: 'query', prop: 'revisions', rvprop: 'content',
-					titles: archiveTitle, formatversion: 2
-				} );
-				const arcPage = arcRes.query.pages[ 0 ];
-				let   arcText = (
-					arcPage.revisions && arcPage.revisions[ 0 ] &&
-					arcPage.revisions[ 0 ].content
+				const arcRes = await api.get({
+					action: 'query',
+					prop: 'revisions',
+					rvprop: 'content',
+					titles: archiveTitle,
+					formatversion: 2
+				});
+				const arcPage = arcRes.query.pages[0];
+				let arcText = (
+					arcPage.revisions && arcPage.revisions[0] &&
+					arcPage.revisions[0].content
 				) || '';
-
-				const appended = arcItems.map( it => it.thread.content.trim() ).join( '\n\n' );
-				arcText = arcText
-					? `${arcText.trim()}\n\n${appended}\n`
-					: `${appended}\n`;
-
-				const archivedTitles = arcItems.map( it => `"${it.thread.title}"` ).join( ', ' );
-				await api.postWithToken( 'csrf', {
-					action:  'edit',
-					title:   archiveTitle,
-					text:    arcText.trim(),
+				const appended = arcItems.map(it => it.thread.content
+					.trim()).join('\n\n');
+				arcText = arcText ?
+					`${arcText.trim()}\n\n${appended}\n` :
+					`${appended}\n`;
+				const archivedTitles = arcItems.map(it =>
+					`"${it.thread.title}"`).join(', ');
+				await api.postWithToken('csrf', {
+					action: 'edit',
+					title: archiveTitle,
+					text: arcText.trim(),
 					summary: `Archived from [[${srcTitle}]]: ${archivedTitles}`
-				} );
-
-				arcItems.forEach( it => ok.push( it.thread.title ) );
-			} catch ( err ) {
-				console.error( '[TalkArchiver:Rachmat04] archive page error', err );
-				arcItems.forEach( it => errors.push( { title: it.thread.title, err } ) );
+				});
+				arcItems.forEach(it => ok.push(it.thread.title));
+			} catch (err) {
+				console.error(
+					'[TalkArchiver:Rachmat04] archive page error', err);
+				arcItems.forEach(it => errors.push({
+					title: it.thread.title,
+					err
+				}));
 			}
 		}
-
-		const okSet = new Set( ok );
-		for ( const item of items ) {
-			if ( !okSet.has( item.thread.title ) ) continue;
-			const escaped = item.thread.content.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' );
-			srcText = srcText.replace( new RegExp( escaped ), '' );
+		const okSet = new Set(ok);
+		for (const item of items) {
+			if (!okSet.has(item.thread.title)) continue;
+			const escaped = item.thread.content.replace(
+				/[.*+?^${}()|[\]\\]/g, '\\$&');
+			srcText = srcText.replace(new RegExp(escaped), '');
 		}
-		srcText = srcText.replace( /\n{3,}/g, '\n\n' ).trim();
-
-		if ( ok.length > 0 ) {
-			report( 'Saving talk page…' );
-			const archivedList = ok.map( t => `"${t}"` ).join( ', ' );
-			await api.postWithToken( 'csrf', {
-				action:        'edit',
-				title:         PAGE_NAME,
-				text:          srcText,
-				summary:       `Archived ${ok.length} section(s): ${archivedList}`,
+		srcText = srcText.replace(/\n{3,}/g, '\n\n').trim();
+		if (ok.length > 0) {
+			report('Saving talk page…');
+			const archivedList = ok.map(t => `"${t}"`).join(', ');
+			await api.postWithToken('csrf', {
+				action: 'edit',
+				title: PAGE_NAME,
+				text: srcText,
+				summary: `Archived ${ok.length} section(s): ${archivedList}`,
 				basetimestamp: baseTimestamp
-			} );
+			});
 		}
-
-		return { ok, errors };
+		return {
+			ok,
+			errors
+		};
 	}
-
-	async function archiveThread( thread, archiveTitle ) {
+	async function archiveThread(thread, archiveTitle) {
 		const result = await archiveBatch(
-			[ { thread, archiveTitle } ],
-			() => {}
+			[{
+				thread,
+				archiveTitle
+			}], () => {}
 		);
-		if ( result.errors.length ) throw result.errors[ 0 ].err;
+		if (result.errors.length) throw result.errors[0].err;
 	}
 
 	/* ── 12. Empty notice dialog (no threads found) ───────────────── */
 	function openEmptyNotice() {
-		const { overlay, body, footer } = createDialog( {
+		const {
+			overlay,
+			body,
+			footer
+		} = createDialog({
 			title: 'Archive Manager',
-			icon:  '📦',
+			icon: '📦',
 			small: true
-		} );
-
-		const bodyPad = document.createElement( 'div' );
+		});
+		const bodyPad = document.createElement('div');
 		bodyPad.className = 'ta-dialog-body-pad';
 		bodyPad.innerHTML = `
 			<p style="margin:0">No level-2 sections were found on this talk page.</p>
 			<p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
 				TalkArchiver only detects threads marked with <code>== … ==</code> headings.
 			</p>`;
-		body.appendChild( bodyPad );
-
-		const footerRight = document.createElement( 'div' );
+		body.appendChild(bodyPad);
+		const footerRight = document.createElement('div');
 		footerRight.className = 'ta-dialog-footer-right';
-		footer.appendChild( footerRight );
-		addFooterBtn( footerRight, 'Close', 'mw-ui-quiet', () => overlay.closeHandler() );
+		footer.appendChild(footerRight);
+		addFooterBtn(footerRight, 'Close', 'mw-ui-quiet', () => overlay
+			.closeHandler());
 	}
 
 	/* ── 13. Archive Manager panel ───────────────────────────────── */
-	async function openArchiveManager( allThreads ) {
-		const items = allThreads.map( t => ( {
+	async function openArchiveManager(allThreads) {
+		const items = allThreads.map(t => ({
 			thread: t,
 			ts: null,
 			tsLoaded: false,
 			year: new Date().getUTCFullYear(),
-			archiveTitle: getArchiveTitle( new Date().getUTCFullYear() ),
+			archiveTitle: getArchiveTitle(new Date()
+				.getUTCFullYear()),
 			status: 'pending',
 			selected: false
-		} ) );
-
+		}));
 		let filterDays = 0;
-
-		const { overlay, body, footer } = createDialog( {
+		const {
+			overlay,
+			body,
+			footer
+		} = createDialog({
 			title: 'Archive Manager',
-			icon:  '📦',
+			icon: '📦',
 			onClose: () => {}
-		} );
-
-		const toolbar = document.createElement( 'div' );
+		});
+		const toolbar = document.createElement('div');
 		toolbar.className = 'ta-toolbar';
-
-		const chkAll = document.createElement( 'input' );
+		const chkAll = document.createElement('input');
 		chkAll.type = 'checkbox';
-		chkAll.id   = 'ta-chk-all';
-		const lblAll = document.createElement( 'label' );
+		chkAll.id = 'ta-chk-all';
+		const lblAll = document.createElement('label');
 		lblAll.htmlFor = 'ta-chk-all';
-		lblAll.appendChild( chkAll );
-		lblAll.appendChild( document.createTextNode( ' Select all' ) );
-
-		const loadTsBtn = document.createElement( 'button' );
+		lblAll.appendChild(chkAll);
+		lblAll.appendChild(document.createTextNode(' Select all'));
+		const loadTsBtn = document.createElement('button');
 		loadTsBtn.className = 'mw-ui-button mw-ui-quiet';
 		loadTsBtn.style.fontSize = '0.85em';
 		loadTsBtn.textContent = '🕐 Load timestamps';
-
-		const filterWrap = document.createElement( 'div' );
+		const filterWrap = document.createElement('div');
 		filterWrap.className = 'ta-filter-age';
 		filterWrap.innerHTML = `<span>Filter:</span>
 			<select id="ta-filter-sel">
@@ -799,14 +861,12 @@
 				<option value="90">Older than 90 days</option>
 				<option value="180">Older than 180 days</option>
 			</select>`;
-
-		toolbar.appendChild( lblAll );
-		toolbar.appendChild( loadTsBtn );
-		toolbar.appendChild( filterWrap );
-		body.appendChild( toolbar );
-
-		const tableWrap = document.createElement( 'div' );
-		const table = document.createElement( 'table' );
+		toolbar.appendChild(lblAll);
+		toolbar.appendChild(loadTsBtn);
+		toolbar.appendChild(filterWrap);
+		body.appendChild(toolbar);
+		const tableWrap = document.createElement('div');
+		const table = document.createElement('table');
 		table.className = 'ta-thread-table';
 		table.innerHTML = `<thead>
 			<tr>
@@ -818,86 +878,85 @@
 				<th class="ta-td-status">Status</th>
 			</tr>
 		</thead>`;
-		const tbody = document.createElement( 'tbody' );
-		table.appendChild( tbody );
-		tableWrap.appendChild( table );
-		body.appendChild( tableWrap );
-
-		const footerInfo = document.createElement( 'div' );
+		const tbody = document.createElement('tbody');
+		table.appendChild(tbody);
+		tableWrap.appendChild(table);
+		body.appendChild(tableWrap);
+		const footerInfo = document.createElement('div');
 		footerInfo.className = 'ta-footer-info';
 		footerInfo.id = 'ta-footer-info';
 		footerInfo.textContent = '0 threads selected';
-
-		const footerRight = document.createElement( 'div' );
+		const footerRight = document.createElement('div');
 		footerRight.className = 'ta-dialog-footer-right';
-
-		const cancelBtn = document.createElement( 'button' );
+		const cancelBtn = document.createElement('button');
 		cancelBtn.className = 'mw-ui-button mw-ui-quiet';
 		cancelBtn.textContent = 'Close';
-		cancelBtn.addEventListener( 'click', () => overlay.closeHandler() );
-
-		const archiveBtn = document.createElement( 'button' );
+		cancelBtn.addEventListener('click', () => overlay
+			.closeHandler());
+		const archiveBtn = document.createElement('button');
 		archiveBtn.className = 'mw-ui-button mw-ui-progressive';
 		archiveBtn.textContent = 'Archive selected';
 		archiveBtn.disabled = true;
-
-		footerRight.appendChild( cancelBtn );
-		footerRight.appendChild( archiveBtn );
-		footer.appendChild( footerInfo );
-		footer.appendChild( footerRight );
+		footerRight.appendChild(cancelBtn);
+		footerRight.appendChild(archiveBtn);
+		footer.appendChild(footerInfo);
+		footer.appendChild(footerRight);
 
 		function getVisibleItems() {
-			if ( filterDays === 0 ) return items;
+			if (filterDays === 0) return items;
 			const cutoff = Date.now() - filterDays * 864e5;
-			return items.filter( it =>
-				!it.tsLoaded || ( it.ts && it.ts.getTime() < cutoff )
+			return items.filter(it =>
+				!it.tsLoaded || (it.ts && it.ts.getTime() < cutoff)
 			);
 		}
 
-		function renderBadge( status ) {
+		function renderBadge(status) {
 			const map = {
-				pending: [ 'ta-badge-pending', '—' ],
-				loading: [ 'ta-badge-loading', '⏳' ],
-				ok:      [ 'ta-badge-ok',      '✅ Done' ],
-				error:   [ 'ta-badge-error',   '❌ Failed' ],
-				skipped: [ 'ta-badge-skipped', 'Skipped' ]
+				pending: ['ta-badge-pending', '—'],
+				loading: ['ta-badge-loading', '⏳'],
+				ok: ['ta-badge-ok', '✅ Done'],
+				error: ['ta-badge-error', '❌ Failed'],
+				skipped: ['ta-badge-skipped', 'Skipped']
 			};
-			const [ cls, txt ] = map[ status ] || map.pending;
+			const [cls, txt] = map[status] || map.pending;
 			return `<span class="ta-badge ${cls}">${txt}</span>`;
 		}
 
 		function updateFooterCount() {
-			const n = items.filter( it => it.selected ).length;
-			const el = document.getElementById( 'ta-footer-info' );
-			if ( el ) el.textContent = `${n} thread${n !== 1 ? 's' : ''} selected`;
+			const n = items.filter(it => it.selected).length;
+			const el = document.getElementById('ta-footer-info');
+			if (el) el.textContent =
+				`${n} thread${n !== 1 ? 's' : ''} selected`;
 			archiveBtn.disabled = n === 0;
 		}
 
 		function renderTable() {
 			tbody.innerHTML = '';
 			const visible = getVisibleItems();
-
-			if ( !visible.length ) {
-				const tr = document.createElement( 'tr' );
+			if (!visible.length) {
+				const tr = document.createElement('tr');
 				tr.innerHTML = `<td colspan="6" style="text-align:center;padding:18px;color:#72777d">
 					No threads match the current filter.</td>`;
-				tbody.appendChild( tr );
+				tbody.appendChild(tr);
 				return;
 			}
-
-			visible.forEach( ( item, vi ) => {
-				const tr = document.createElement( 'tr' );
-				if ( item.selected ) tr.classList.add( 'ta-selected' );
-
-				const tsText = item.tsLoaded
-					? ( item.ts ? item.ts.toISOString().slice( 0, 10 ) : 'Not detected' )
-					: '<span style="color:#a2a9b1">Not loaded</span>';
-
-				const detectedYear = item.ts ? item.ts.getUTCFullYear() : new Date().getUTCFullYear();
-				const isOverride   = item.yearOverride && item.yearOverride !== detectedYear;
-				const yearSelCls   = isOverride ? 'ta-year-sel ta-year-override' : 'ta-year-sel';
-				const displayTitle = mw.html.escape( item.thread.titleClean );
-
+			visible.forEach((item, vi) => {
+				const tr = document.createElement('tr');
+				if (item.selected) tr.classList.add(
+					'ta-selected');
+				const tsText = item.tsLoaded ?
+					(item.ts ? item.ts.toISOString().slice(0, 10) : 'Not detected') :
+					'<span style="color:#a2a9b1">Not loaded</span>';
+				const detectedYear = item.ts ? item.ts
+					.getUTCFullYear() : new Date()
+					.getUTCFullYear();
+				const isOverride = item.yearOverride && item
+					.yearOverride !== detectedYear;
+				const yearSelCls = isOverride ?
+					'ta-year-sel ta-year-override' :
+					'ta-year-sel';
+				const displayTitle = mw.html.escape(item.thread
+					.titleClean);
 				tr.innerHTML = `
 					<td class="ta-td-check"><input type="checkbox" class="ta-row-chk" data-vi="${vi}" ${item.selected ? 'checked' : ''}></td>
 					<td class="ta-td-title">${displayTitle}</td>
@@ -905,202 +964,225 @@
 					<td class="ta-td-year"><select class="${yearSelCls} ta-row-year" title="Override archive year">${buildYearOptions( item.year )}</select></td>
 					<td class="ta-td-dest ta-row-dest">${mw.html.escape( item.archiveTitle )}</td>
 					<td class="ta-td-status">${renderBadge( item.status )}</td>`;
-
-				tr.querySelector( '.ta-row-chk' ).addEventListener( 'change', e => {
-					item.selected = e.target.checked;
-					tr.classList.toggle( 'ta-selected', item.selected );
-					updateFooterCount();
-					const vis = getVisibleItems();
-					chkAll.checked = vis.length > 0 && vis.every( it => it.selected );
-					chkAll.indeterminate = vis.some( it => it.selected ) && !vis.every( it => it.selected );
-				} );
-
-				tr.querySelector( '.ta-row-year' ).addEventListener( 'change', e => {
-					const newYear = parseInt( e.target.value, 10 );
-					item.year         = newYear;
-					item.archiveTitle = getArchiveTitle( newYear );
-					item.yearOverride = newYear;
-					tr.querySelector( '.ta-row-dest' ).textContent = item.archiveTitle;
-					const sel = e.target;
-					const det = item.ts ? item.ts.getUTCFullYear() : new Date().getUTCFullYear();
-					sel.className = ( newYear !== det )
-						? 'ta-year-sel ta-year-override ta-row-year'
-						: 'ta-year-sel ta-row-year';
-				} );
-
-				tbody.appendChild( tr );
-			} );
-
+				tr.querySelector('.ta-row-chk')
+					.addEventListener('change', e => {
+						item.selected = e.target.checked;
+						tr.classList.toggle('ta-selected', item.selected);
+						updateFooterCount();
+						const vis = getVisibleItems();
+						chkAll.checked = vis.length > 0 &&
+							vis.every(it => it.selected);
+						chkAll.indeterminate = vis.some(
+								it => it.selected) && !vis
+							.every(it => it
+								.selected);
+					});
+				tr.querySelector('.ta-row-year')
+					.addEventListener('change', e => {
+						const newYear = parseInt(e.target
+							.value, 10);
+						item.year = newYear;
+						item.archiveTitle = getArchiveTitle(
+							newYear);
+						item.yearOverride = newYear;
+						tr.querySelector('.ta-row-dest')
+							.textContent = item
+							.archiveTitle;
+						const sel = e.target;
+						const det = item.ts ? item.ts
+							.getUTCFullYear() : new Date()
+							.getUTCFullYear();
+						sel.className = (newYear !== det) ?
+							'ta-year-sel ta-year-override ta-row-year' :
+							'ta-year-sel ta-row-year';
+					});
+				tbody.appendChild(tr);
+			});
 			updateFooterCount();
 		}
-
-		chkAll.addEventListener( 'change', () => {
+		chkAll.addEventListener('change', () => {
 			const vis = getVisibleItems();
-			vis.forEach( it => { it.selected = chkAll.checked; } );
+			vis.forEach(it => {
+				it.selected = chkAll.checked;
+			});
 			renderTable();
-		} );
-
-		setTimeout( () => {
-			const sel = document.getElementById( 'ta-filter-sel' );
-			if ( sel ) sel.addEventListener( 'change', e => {
-				filterDays = parseInt( e.target.value, 10 );
+		});
+		setTimeout(() => {
+			const sel = document.getElementById(
+				'ta-filter-sel');
+			if (sel) sel.addEventListener('change', e => {
+				filterDays = parseInt(e.target.value, 10);
 				chkAll.checked = false;
 				renderTable();
-			} );
-		}, 0 );
-
-		loadTsBtn.addEventListener( 'click', async () => {
+			});
+		}, 0);
+		loadTsBtn.addEventListener('click', async () => {
 			loadTsBtn.disabled = true;
 			loadTsBtn.textContent = '⏳ Loading…';
-
-			for ( let i = 0; i < items.length; i++ ) {
-				items[ i ].status = 'loading';
+			for (let i = 0; i < items.length; i++) {
+				items[i].status = 'loading';
 				renderTable();
-
-				const ts = await getThreadLastTimestamp( items[ i ].thread.content );
-				items[ i ].ts       = ts;
-				items[ i ].tsLoaded = true;
-				if ( !items[ i ].yearOverride ) {
-					items[ i ].year         = ts ? ts.getUTCFullYear() : new Date().getUTCFullYear();
-					items[ i ].archiveTitle = getArchiveTitle( items[ i ].year );
+				const ts = await getThreadLastTimestamp(
+					items[i].thread.content);
+				items[i].ts = ts;
+				items[i].tsLoaded = true;
+				if (!items[i].yearOverride) {
+					items[i].year = ts ? ts
+						.getUTCFullYear() : new Date()
+						.getUTCFullYear();
+					items[i].archiveTitle = getArchiveTitle(
+						items[i].year);
 				}
-				items[ i ].status = 'pending';
+				items[i].status = 'pending';
 				renderTable();
 			}
-
 			loadTsBtn.disabled = false;
 			loadTsBtn.textContent = '🔄 Refresh timestamps';
-		} );
-
-		archiveBtn.addEventListener( 'click', () => {
-			const selected = items.filter( it => it.selected );
-			if ( !selected.length ) return;
-			openBulkConfirm( selected, items, overlay, renderTable, updateFooterCount, archiveBtn, cancelBtn );
-		} );
-
+		});
+		archiveBtn.addEventListener('click', () => {
+			const selected = items.filter(it => it.selected);
+			if (!selected.length) return;
+			openBulkConfirm(selected, items, overlay, renderTable, updateFooterCount, archiveBtn, cancelBtn);
+		});
 		renderTable();
 	}
 
 	/* ── 14. Bulk confirm dialog ─────────────────────────────────── */
-	function openBulkConfirm( selected, allItems, managerOverlay, renderTable, updateFooterCount, archiveBtn, cancelBtnOuter ) {
-		const { overlay, body, footer } = createDialog( {
+	function openBulkConfirm(selected, allItems, managerOverlay, renderTable, updateFooterCount, archiveBtn, cancelBtnOuter) {
+		const {
+			overlay,
+			body,
+			footer
+		} = createDialog({
 			title: `Confirm archiving ${selected.length} thread${selected.length !== 1 ? 's' : ''}`,
-			icon:  '📋',
+			icon: '📋',
 			small: true
-		} );
-
-		const bodyPad = document.createElement( 'div' );
+		});
+		const bodyPad = document.createElement('div');
 		bodyPad.className = 'ta-dialog-body-pad';
-		bodyPad.innerHTML = `<p style="margin:0 0 6px">The following threads will be archived:</p>`;
-
-		const ul = document.createElement( 'ul' );
+		bodyPad.innerHTML =
+			`<p style="margin:0 0 6px">The following threads will be archived:</p>`;
+		const ul = document.createElement('ul');
 		ul.className = 'ta-confirm-list';
-		selected.forEach( item => {
-			const li = document.createElement( 'li' );
+		selected.forEach(item => {
+			const li = document.createElement('li');
 			li.innerHTML = `<b>${mw.html.escape( item.thread.titleClean )}</b>
 				<div class="ta-dest">→ ${mw.html.escape( item.archiveTitle )}</div>`;
-			ul.appendChild( li );
-		} );
-		bodyPad.appendChild( ul );
-
-		const progressLog = document.createElement( 'div' );
+			ul.appendChild(li);
+		});
+		bodyPad.appendChild(ul);
+		const progressLog = document.createElement('div');
 		progressLog.className = 'ta-progress-log';
 		progressLog.id = 'ta-bulk-progress';
-		bodyPad.appendChild( progressLog );
-		body.appendChild( bodyPad );
-
-		const footerRight2 = document.createElement( 'div' );
+		bodyPad.appendChild(progressLog);
+		body.appendChild(bodyPad);
+		const footerRight2 = document.createElement('div');
 		footerRight2.className = 'ta-dialog-footer-right';
-		footer.appendChild( footerRight2 );
-
-		const c2 = addFooterBtn( footerRight2, 'Cancel', 'mw-ui-quiet', () => overlay.closeHandler() );
-		const confirmBtn = addFooterBtn( footerRight2, 'Archive now', 'mw-ui-progressive', async () => {
+		footer.appendChild(footerRight2);
+		const c2 = addFooterBtn(footerRight2, 'Cancel', 'mw-ui-quiet', () =>
+			overlay.closeHandler());
+		const confirmBtn = addFooterBtn(footerRight2, 'Archive now', 'mw-ui-progressive', async () => {
 			confirmBtn.disabled = true;
 			c2.disabled = true;
 			archiveBtn.disabled = true;
 			cancelBtnOuter.disabled = true;
-
-			const progEl = document.getElementById( 'ta-bulk-progress' );
-
-			selected.forEach( it => { it.status = 'loading'; } );
+			const progEl = document.getElementById(
+				'ta-bulk-progress');
+			selected.forEach(it => {
+				it.status = 'loading';
+			});
 			renderTable();
-
 			let batchResult;
 			try {
 				batchResult = await archiveBatch(
-					selected.map( it => ( { thread: it.thread, archiveTitle: it.archiveTitle } ) ),
-					msg => { if ( progEl ) progEl.textContent = `⏳ ${msg}`; }
+					selected.map(it => ({
+						thread: it.thread,
+						archiveTitle: it
+							.archiveTitle
+					})), msg => {
+						if (progEl) progEl.textContent =
+							`⏳ ${msg}`;
+					}
 				);
-			} catch ( fatalErr ) {
-				console.error( '[TalkArchiver:Rachmat04] fatal batch error', fatalErr );
+			} catch (fatalErr) {
+				console.error(
+					'[TalkArchiver:Rachmat04] fatal batch error', fatalErr);
 				batchResult = {
 					ok: [],
-					errors: selected.map( it => ( { title: it.thread.title, err: fatalErr } ) )
+					errors: selected.map(it => ({
+						title: it.thread.title,
+						err: fatalErr
+					}))
 				};
 			}
-
-			const okSet = new Set( batchResult.ok );
-			selected.forEach( it => {
-				it.status   = okSet.has( it.thread.title ) ? 'ok' : 'error';
+			const okSet = new Set(batchResult.ok);
+			selected.forEach(it => {
+				it.status = okSet.has(it.thread.title) ?
+					'ok' : 'error';
 				it.selected = false;
-			} );
+			});
 			renderTable();
 			updateFooterCount();
-
-			const doneCount  = batchResult.ok.length;
+			const doneCount = batchResult.ok.length;
 			const errorCount = batchResult.errors.length;
-			if ( progEl ) progEl.innerHTML =
+			if (progEl) progEl.innerHTML =
 				`<b>Done.</b> ${doneCount} succeeded, ${errorCount} failed.` +
-				( errorCount ? ' Check the browser console for details.' : '' );
-
+				(errorCount ?
+					' Check the browser console for details.' :
+					'');
 			footerRight2.innerHTML = '';
-			addFooterBtn( footerRight2, 'Close & reload', 'mw-ui-progressive', () => {
+			addFooterBtn(footerRight2, 'Close & reload', 'mw-ui-progressive', () => {
 				overlay.closeHandler();
 				managerOverlay.closeHandler();
 				location.reload();
-			} );
-			if ( errorCount > 0 ) {
-				addFooterBtn( footerRight2, 'Close without reload', 'mw-ui-quiet', () => {
+			});
+			if (errorCount > 0) {
+				addFooterBtn(footerRight2, 'Close without reload', 'mw-ui-quiet', () => {
 					overlay.closeHandler();
 					cancelBtnOuter.disabled = false;
-					archiveBtn.disabled = selected.filter( it => it.selected ).length === 0;
-				} );
+					archiveBtn.disabled = selected
+						.filter(it => it.selected)
+						.length === 0;
+				});
 			}
-		} );
+		});
 	}
 
 	/* ── 15. Single-thread "Archive now" button handler ──────────── */
-	async function onArchiveBtnClick( thread, btn ) {
+	async function onArchiveBtnClick(thread, btn) {
 		btn.disabled = true;
 		btn.innerHTML = '<span class="ta-btn-spinner"></span>';
-
-		const { overlay, body, footer } = createDialog( {
+		const {
+			overlay,
+			body,
+			footer
+		} = createDialog({
 			title: 'Archive section',
-			icon:  '🗃️',
+			icon: '🗃️',
 			small: true,
-			onClose: () => { btn.disabled = false; btn.textContent = '🗃️'; }
-		} );
-
-		const bodyPad = document.createElement( 'div' );
+			onClose: () => {
+				btn.disabled = false;
+				btn.textContent = '🗃️';
+			}
+		});
+		const bodyPad = document.createElement('div');
 		bodyPad.className = 'ta-dialog-body-pad';
 		bodyPad.innerHTML = `
 			<div style="font-weight:700;margin-bottom:6px">${mw.html.escape( thread.titleClean )}</div>
 			<div class="ta-progress-log" id="ta-prog">⏳ Detecting timestamp…</div>`;
-		body.appendChild( bodyPad );
-
+		body.appendChild(bodyPad);
 		let timestamp = null;
 		try {
-			timestamp = await getThreadLastTimestamp( thread.content );
-		} catch ( e ) {}
-
-		const detectedYear = timestamp ? timestamp.getUTCFullYear() : new Date().getUTCFullYear();
-		let   activeYear   = detectedYear;
-		const tsDisplay    = timestamp ? timestamp.toISOString().slice( 0, 10 ) : 'Not detected';
+			timestamp = await getThreadLastTimestamp(thread.content);
+		} catch (e) {}
+		const detectedYear = timestamp ? timestamp.getUTCFullYear() :
+			new Date().getUTCFullYear();
+		let activeYear = detectedYear;
+		const tsDisplay = timestamp ? timestamp.toISOString().slice(0, 10) : 'Not detected';
 
 		function renderSingleBody() {
-			const curArchiveTitle = getArchiveTitle( activeYear );
-			const isOverride      = activeYear !== detectedYear;
-
+			const curArchiveTitle = getArchiveTitle(activeYear);
+			const isOverride = activeYear !== detectedYear;
 			bodyPad.innerHTML = `
 				<div style="font-weight:700;margin-bottom:8px">${mw.html.escape( thread.titleClean )}</div>
 				<div>Last active: <b>${mw.html.escape( tsDisplay )}</b>
@@ -1119,112 +1201,115 @@
 				<div class="ta-dest-preview">→ ${mw.html.escape( curArchiveTitle )}</div>
 				${!timestamp ? '<div style="margin-top:8px;color:#d4730a">⚠️ Timestamp not detected. Verify the year before continuing.</div>' : ''}
 				<div class="ta-progress-log" id="ta-prog2"></div>`;
-
-			bodyPad.querySelector( '#ta-single-year' ).addEventListener( 'change', e => {
-				activeYear = parseInt( e.target.value, 10 );
-				renderSingleBody();
-				attachConfirm();
-			} );
+			bodyPad.querySelector('#ta-single-year').addEventListener(
+				'change', e => {
+					activeYear = parseInt(e.target.value, 10);
+					renderSingleBody();
+					attachConfirm();
+				});
 		}
-
 		renderSingleBody();
-
-		const footerRight = document.createElement( 'div' );
+		const footerRight = document.createElement('div');
 		footerRight.className = 'ta-dialog-footer-right';
-		footer.appendChild( footerRight );
-
-		addFooterBtn( footerRight, 'Cancel', 'mw-ui-quiet', () => overlay.closeHandler() );
-
+		footer.appendChild(footerRight);
+		addFooterBtn(footerRight, 'Cancel', 'mw-ui-quiet', () => overlay
+			.closeHandler());
 		let confirmBtn;
+
 		function attachConfirm() {
-			if ( confirmBtn ) confirmBtn.remove();
-			confirmBtn = addFooterBtn( footerRight, 'Archive', 'mw-ui-progressive', async () => {
+			if (confirmBtn) confirmBtn.remove();
+			confirmBtn = addFooterBtn(footerRight, 'Archive', 'mw-ui-progressive', async () => {
 				confirmBtn.disabled = true;
-				const prog2 = bodyPad.querySelector( '#ta-prog2' );
-				if ( prog2 ) prog2.textContent = '⏳ Archiving…';
-				const finalArchiveTitle = getArchiveTitle( activeYear );
+				const prog2 = bodyPad.querySelector(
+					'#ta-prog2');
+				if (prog2) prog2.textContent =
+					'⏳ Archiving…';
+				const finalArchiveTitle = getArchiveTitle(
+					activeYear);
 				try {
-					await archiveThread( thread, finalArchiveTitle );
-					bodyPad.innerHTML = `
+					await archiveThread(thread, finalArchiveTitle);
+					bodyPad.innerHTML =
+						`
 						<div>✅ Section <b>${mw.html.escape( thread.titleClean )}</b> archived successfully.</div>
 						<div class="ta-dest-preview" style="margin-top:6px">→ <a href="${mw.util.getUrl( finalArchiveTitle )}" target="_blank">${mw.html.escape( finalArchiveTitle )}</a></div>`;
 					footerRight.innerHTML = '';
-					addFooterBtn( footerRight, 'Close & reload', 'mw-ui-progressive', () => {
+					addFooterBtn(footerRight, 'Close & reload', 'mw-ui-progressive', () => {
 						overlay.closeHandler();
 						location.reload();
-					} );
-				} catch ( e ) {
-					console.error( '[TalkArchiver:Rachmat04]', e );
-					const p2 = bodyPad.querySelector( '#ta-prog2' );
-					if ( p2 ) p2.textContent = '❌ Failed. Check the browser console.';
+					});
+				} catch (e) {
+					console.error(
+						'[TalkArchiver:Rachmat04]', e);
+					const p2 = bodyPad.querySelector(
+						'#ta-prog2');
+					if (p2) p2.textContent =
+						'❌ Failed. Check the browser console.';
 					confirmBtn.disabled = false;
 				}
-			} );
+			});
 		}
 		attachConfirm();
 	}
-
 	/* ── 16. Inject buttons ───────────────────────────────────────── */
 	async function injectButtons() {
 		let wikitext;
 		try {
-			const res = await api.get( {
-				action: 'query', prop: 'revisions', rvprop: 'content',
-				titles: PAGE_NAME, formatversion: 2
-			} );
-			wikitext = res.query.pages[ 0 ].revisions[ 0 ].content;
-		} catch ( e ) { return; }
-		if ( !wikitext ) return;
-
-		const threads = parseThreads( wikitext );
-
+			const res = await api.get({
+				action: 'query',
+				prop: 'revisions',
+				rvprop: 'content',
+				titles: PAGE_NAME,
+				formatversion: 2
+			});
+			wikitext = res.query.pages[0].revisions[0].content;
+		} catch (e) {
+			return;
+		}
+		if (!wikitext) return;
+		const threads = parseThreads(wikitext);
 		/* ── FAB: always shown, adapts to thread count ──────────── */
-		if ( !document.getElementById( 'ta-fab' ) ) {
-			const fab = document.createElement( 'button' );
-			fab.id    = 'ta-fab';
-			fab.title = threads.length
-				? `Archive Manager (${threads.length} thread${threads.length !== 1 ? 's' : ''})`
-				: 'Archive Manager — no threads found';
-			fab.innerHTML = threads.length
-				? `📦<span id="ta-fab-badge">${threads.length}</span>`
-				: `📦`;
-
-			fab.addEventListener( 'click', () => {
-				if ( !threads.length ) {
+		if (!document.getElementById('ta-fab')) {
+			const fab = document.createElement('button');
+			fab.id = 'ta-fab';
+			fab.title = threads.length ?
+				`Archive Manager (${threads.length} thread${threads.length !== 1 ? 's' : ''})` :
+				'Archive Manager — no threads found';
+			fab.innerHTML = threads.length ?
+				`📦<span id="ta-fab-badge">${threads.length}</span>` :
+				`📦`;
+			fab.addEventListener('click', () => {
+				if (!threads.length) {
 					openEmptyNotice();
 				} else {
-					openArchiveManager( threads );
+					openArchiveManager(threads);
 				}
-			} );
-			document.body.appendChild( fab );
+			});
+			document.body.appendChild(fab);
 		}
-
 		/* ── Per-heading "Archive now" buttons (only if threads exist) ── */
-		if ( !threads.length ) return;
-
-		const headings = Array.from( document.querySelectorAll( '#mw-content-text h2' ) );
-		headings.forEach( ( heading, i ) => {
-			const thread = threads[ i ];
-			if ( !thread ) return;
-			if ( heading.querySelector( '.ta-btn' ) ) return;
-
-			const btn = document.createElement( 'button' );
-			btn.className   = 'ta-btn';
+		if (!threads.length) return;
+		const headings = Array.from(document.querySelectorAll(
+			'#mw-content-text h2'));
+		headings.forEach((heading, i) => {
+			const thread = threads[i];
+			if (!thread) return;
+			if (heading.querySelector('.ta-btn')) return;
+			const btn = document.createElement('button');
+			btn.className = 'ta-btn';
 			btn.textContent = '🗃️';
-			btn.title       = `Archive this section`;
-			btn.addEventListener( 'click', e => {
+			btn.title = `Archive this section`;
+			btn.addEventListener('click', e => {
 				e.preventDefault();
-				onArchiveBtnClick( thread, btn );
-			} );
-
-			const editLink = heading.querySelector( '.mw-editsection' );
-			if ( editLink ) heading.insertBefore( btn, editLink );
-			else heading.appendChild( btn );
-		} );
+				onArchiveBtnClick(thread, btn);
+			});
+			const editLink = heading.querySelector(
+				'.mw-editsection');
+			if (editLink) heading.insertBefore(btn, editLink);
+			else heading.appendChild(btn);
+		});
 	}
 
 	/* ── 17. Run after DOM ready ─────────────────────────────────── */
-	$( injectButtons );
-
-} )();
+	$(injectButtons);
+})();
 // </nowiki>
