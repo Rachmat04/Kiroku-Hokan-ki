@@ -595,6 +595,21 @@
 			}
 		}
 
+		/* Pattern 7: zh-min-nan */
+		const RE_ZH_MN = /(\d{4})[\s-]*nî[\s-]*(\d{1,2})[\s-]*goe̍h[\s-]*(\d{1,2})[\s-]*ji̍t(?:\s*\(.*?\))?\s*(\d{1,2}):(\d{2})(?:\s*\(UTC\))?/g
+		{
+			let m;
+			while ( ( m = RE_ZH_MN.exec( threadContent ) ) !== null ) {
+				const year  = parseInt( m[1], 10 );
+				const month = parseInt( m[2], 10 );
+				const day   = parseInt( m[3], 10 );
+				const hour  = parseInt( m[4], 10 );
+				const min   = parseInt( m[5], 10 );
+				const d = makeDate( year, month, day, hour, min );
+				if ( d ) dates.push( d );
+			}
+		}
+
 		/* Year-only fallback */
 		if ( !dates.length ) {
 			const RE_YEAR = /\b(20[012]\d)\b/g;
