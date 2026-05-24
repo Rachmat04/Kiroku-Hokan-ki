@@ -12,7 +12,6 @@
  *               other wikis use "Archives")
  * > Timestamp: Read directly from signature patterns in thread text —
  *              no diff API needed, works across languages.
- * > Changes  : FAB always visible; empty-page notice dialog added; he.wikipedia support.
  * •==============================================•
  */
 // <nowiki>
@@ -540,9 +539,59 @@
 			'דצמבר': 12,
 			'בדצמבר': 12
 		};
+		const MONTHS_HI = {
+			'जनवरी': 1,
+			'फ़रवरी': 2,
+			'फरवरी': 2,
+			'मार्च': 3,
+			'अप्रैल': 4,
+			'मई': 5,
+			'जून': 6,
+			'जुलाई': 7,
+			'अगस्त': 8,
+			'सितंबर': 9,
+			'सितम्बर': 9,
+			'अक्टूबर': 10,
+			'नवंबर': 11,
+			'नवम्बर': 11,
+			'दिसंबर': 12,
+			'दिसम्बर': 12
+		};
+		const MONTHS_PNB = {
+			'جنوری': 1,
+			'فروری': 2,
+			'مارچ': 3,
+			'اپریل': 4,
+			'مئی': 5,
+			'جون': 6,
+			'جولائی': 7,
+			'اگست': 8,
+			'ستمبر': 9,
+			'اکتوبر': 10,
+			'نومبر': 11,
+			'دسمبر': 12
+		};
+		const MONTHS_BN = {
+			'জানুয়ারি': 1,
+			'ফেব্রুয়ারি': 2,
+			'মার্চ': 3,
+			'এপ্রিল': 4,
+			'মে': 5,
+			'জুন': 6,
+			'জুলাই': 7,
+			'আগস্ট': 8,
+			'সেপ্টেম্বর': 9,
+			'অক্টোবর': 10,
+			'নভেম্বর': 11,
+			'ডিসেম্বর': 12
+		};
+		const MONTHS_GOR_MIN = {
+			'pebruari': 2,
+			'mai': 5,
+			'nopember': 11
+		};
 
-		// Gabungkan semua objek bulan
-		const MONTHS_LATIN = Object.assign({}, MONTHS_EN, MONTHS_ID, MONTHS_AR, MONTHS_HE);
+		const MONTHS_LATIN = Object.assign({}, MONTHS_EN, MONTHS_ID, MONTHS_AR, MONTHS_HE, MONTHS_HI, MONTHS_PNB, MONTHS_BN, MONTHS_GOR_MIN);
 
 		function makeDate(year, month, day, hour, min) {
 			if (year < 2001 || year > 2099) return null;
@@ -699,6 +748,101 @@
 				const day = parseInt(m[3], 10);
 				const monthName = m[4];
 				const year = parseInt(m[5], 10);
+				const monthNum = MONTHS_LATIN[monthName];
+				if (!monthNum) continue;
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
+			}
+		}
+
+		/* Pattern 10: Hindi (hi.wikipedia.org) - HH:MM, D MonthName YYYY (TZ) */
+		const RE_HI = /(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([\u0900-\u097F]+)\s+(\d{4})(?:\s*\([A-Z]+\))?/g;
+		{
+			let m;
+			while ((m = RE_HI.exec(threadContent)) !== null) {
+				const hour = parseInt(m[1] || '0', 10);
+				const min = parseInt(m[2] || '0', 10);
+				const day = parseInt(m[3], 10);
+				const monthName = m[4];
+				const year = parseInt(m[5], 10);
+				const monthNum = MONTHS_LATIN[monthName];
+				if (!monthNum) continue;
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
+			}
+		}
+
+		/* Pattern 11: Western Punjabi (pnb.wikipedia.org) - RTL + Eastern Arabic/Urdu Numerals */
+		/* Optional LTR/RTL invisible marks [\u200E\u200F] handled around spaces */
+		const RE_PNB = /(?:([\u0660-\u0669\u06F0-\u06F9]{1,2}):([\u0660-\u0669\u06F0-\u06F9]{2})[,،][\s\u200E\u200F]+)?([\u0660-\u0669\u06F0-\u06F9]{1,2})[\s\u200E\u200F]+([\u0600-\u06FF]+)[\s\u200E\u200F]+([\u0660-\u0669\u06F0-\u06F9]{4})(?:[\s\u200E\u200F]*\([A-Za-z]+\))?/g;
+		{
+			function pnbToNum(str) {
+				if (!str) return 0;
+				return parseInt(str.replace(/[\u0660-\u0669]/g, d => d.charCodeAt(0) - 0x0660)
+					.replace(/[\u06F0-\u06F9]/g, d => d.charCodeAt(0) - 0x06F0), 10);
+			}
+
+			let m;
+			while ((m = RE_PNB.exec(threadContent)) !== null) {
+				const hour = pnbToNum(m[1]);
+				const min = pnbToNum(m[2]);
+				const day = pnbToNum(m[3]);
+				const monthName = m[4];
+				const year = pnbToNum(m[5]);
+				const monthNum = MONTHS_LATIN[monthName];
+				if (!monthNum) continue;
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
+			}
+		}
+
+		/* Pattern 12: Korean (ko.wikipedia.org) - YYYY년 M월 D일 (W) HH:MM (TZ) */
+		const RE_KO = /(\d{4})년\s+(\d{1,2})월\s+(\d{1,2})일(?:\s*\([^)]+\))?\s+(\d{1,2}):(\d{2})/g;
+		{
+			let m;
+			while ((m = RE_KO.exec(threadContent)) !== null) {
+				const year = parseInt(m[1], 10);
+				const month = parseInt(m[2], 10); 
+				const day = parseInt(m[3], 10);
+				const hour = parseInt(m[4], 10);
+				const min = parseInt(m[5], 10);
+				const d = makeDate(year, month, day, hour, min);
+				if (d) dates.push(d);
+			}
+		}
+
+		/* Pattern 13: Bengali (bn.wikipedia.org) - HH:MM, D MonthName YYYY (TZ) */
+		const RE_BN = /(?:([\u09E6-\u09EF]{1,2}):([\u09E6-\u09EF]{2}),\s+)?([\u09E6-\u09EF]{1,2})\s+([\u0980-\u09FF]+)\s+([\u09E6-\u09EF]{4})(?:\s*\([^)]+\))?/g;
+		{
+			function bnToNum(str) {
+				if (!str) return 0;
+				return parseInt(str.replace(/[\u09E6-\u09EF]/g, d => d.charCodeAt(0) - 0x09E6), 10);
+			}
+			
+			let m;
+			while ((m = RE_BN.exec(threadContent)) !== null) {
+				const hour = bnToNum(m[1]);
+				const min = bnToNum(m[2]);
+				const day = bnToNum(m[3]);
+				const monthName = m[4];
+				const year = bnToNum(m[5]);
+				const monthNum = MONTHS_LATIN[monthName];
+				if (!monthNum) continue;
+				const d = makeDate(year, monthNum, day, hour, min);
+				if (d) dates.push(d);
+			}
+		}
+
+		/* Pattern 14: Gorontalo & Minangkabau (gor.wikipedia, min.wikipedia) - D Month YYYY HH.MM (TZ) */
+		const RE_GOR_MIN = /\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s+(\d{1,2})[.:](\d{2})(?:\s*\([A-Za-z]+\))?/g;
+		{
+			let m;
+			while ((m = RE_GOR_MIN.exec(threadContent)) !== null) {
+				const day = parseInt(m[1], 10);
+				const monthName = m[2].toLowerCase();
+				const year = parseInt(m[3], 10);
+				const hour = parseInt(m[4], 10);
+				const min = parseInt(m[5], 10);
 				const monthNum = MONTHS_LATIN[monthName];
 				if (!monthNum) continue;
 				const d = makeDate(year, monthNum, day, hour, min);
