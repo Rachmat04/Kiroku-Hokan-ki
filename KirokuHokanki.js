@@ -1,11 +1,35 @@
 /**
- * [GADGET: Kiroku Hokan-ki (Archive Assistant)]
- * [FUNCTION: Automates talk page discussion archiving based on year.]
- * [SUMMARY: Injects archive buttons into level-2 headings and provides a 
- * bulk-management panel to detect, filter, and move threads to year-based 
- * subpages, while automatically cleaning the source page.]
- * [LIMITATIONS: Only works on talk page namespaces and requires write API access.]
- * [USERS: Restricted to account Rachmat04 (enforced by script).]
+ * ============================================================================
+ *  KIROKU HŌKAN-KI — 記録保管機
+ *  Talk Page Archiving Gadget
+ * ============================================================================
+ *
+ * WHAT THIS DOES
+ * - Adds archive controls to level-2 discussion headings
+ * - Detects and manages conversation threads
+ * - Moves old discussions into year-based archive pages
+ * - Provides a bulk management panel for moderation-style cleanup
+ *
+ * HOW IT WORKS
+ * - Scans talk pages for structured discussion sections
+ * - Sorts threads by age (year-based logic)
+ * - Moves selected threads to archive subpages
+ * - Cleans up source page after successful transfer
+ *
+ * WHERE IT WORKS
+ * - Talk namespaces only
+ * - Requires edit/write API permissions
+ *
+ * ACCESS CONTROL
+ * - Restricted usage (account-level enforcement inside script)
+ * - Intended for single-user tooling and maintenance workflows
+ *
+ * NOTES
+ * - Designed for structured wiki discussion pages
+ * - Behavior depends on consistent heading format
+ * - Bulk actions are irreversible unless manually restored
+ *
+ * ============================================================================
  */
 // <nowiki>
 (function () {
