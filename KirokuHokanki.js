@@ -1445,7 +1445,7 @@
 					action: 'edit',
 					title: archiveTitle,
 					text: arcText.trim(),
-					summary: `Archived from [[${srcTitle}]]: ${archivedTitles} (via [[m:User:Rachmat04/KirokuHokanki.js|Kiroku Hokan-ki]])`
+					summary: `Archived from [[${srcTitle}]]: ${archivedTitles} (via [[m:User:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`
 				});
 				arcItems.forEach(it => ok.push(it.thread.title));
 			} catch (err) {
@@ -1472,7 +1472,7 @@
 				action: 'edit',
 				title: PAGE_NAME,
 				text: srcText,
-				summary: `Archived ${ok.length} section(s): ${archivedList} (via [[m:User:Rachmat04/KirokuHokanki.js|Kiroku Hokan-ki]])`,
+				summary: `Archived ${ok.length} section(s): ${archivedList} (via [[m:User:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
 				basetimestamp: baseTimestamp
 			});
 		}
@@ -1501,7 +1501,7 @@
 			body,
 			footer
 		} = createDialog({
-			title: 'Archive Manager',
+			title: 'Kiroku Hokan-ki',
 			icon: '📦',
 			small: true
 		});
@@ -1542,7 +1542,7 @@
 			body,
 			footer
 		} = createDialog({
-			title: 'Archive Manager',
+			title: 'Kiroku Hokan-ki',
 			icon: '📦',
 			onClose: () => {}
 		});
@@ -1991,8 +1991,8 @@
 			const fab = document.createElement('button');
 			fab.id = 'ta-fab';
 			fab.title = threads.length ?
-				`Archive Manager (${threads.length} thread${threads.length !== 1 ? 's' : ''})` :
-				'Archive Manager — no threads found';
+				`Kiroku Hokan-ki (${threads.length} thread${threads.length !== 1 ? 's' : ''})` :
+				'Kiroku Hokan-ki — no threads found';
 			fab.innerHTML = threads.length ? `📦<span id="ta-fab-badge">${threads.length}</span>` :
 				`📦`;
 			fab.addEventListener('click', () => {
