@@ -92,24 +92,36 @@
 	// Injects CSS for UI components like buttons, dialogs, and the floating button.
 	// ============================================================================
 	mw.util.addCSS(`
-		.ta-btn {
-			display: inline-flex; align-items: center; justify-content: center;
-			margin-left: 8px; padding: 1px 4px; font-size: 0.8em; line-height: 1.4;
-			background: none; border: 1px solid #a2a9b1; border-radius: 3px;
-			cursor: pointer; vertical-align: middle; transition: background .15s, border-color .15s;
-			white-space: nowrap; color: inherit;
-		}
-		.ta-btn:hover { background: #eaf0fb; border-color: #36c; }
-		.ta-btn:disabled { opacity: .45; cursor: not-allowed; }
+        .ta-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            margin-left: 8px; padding: 1px 4px; font-size: 0.8em; line-height: 1.4;
+            background: none; border: 1px solid #a2a9b1; border-radius: 3px;
+            cursor: pointer; vertical-align: middle; transition: background .15s, border-color .15s;
+            white-space: nowrap; color: inherit;
+        }
+        .ta-btn:hover { background: #eaf0fb; border-color: #36c; }
+        .ta-btn:disabled { opacity: .45; cursor: not-allowed; }
 
-		#ta-fab {
+        #ta-fab {
 			position: fixed; bottom: 28px; right: 28px; z-index: 9999;
 			width: 52px; height: 52px; border-radius: 50%; background: #1a4e8a;
 			color: #fff; border: none; font-size: 1.5em; cursor: pointer;
 			box-shadow: 0 4px 16px rgba(0,0,0,.32); display: flex;
-			align-items: center; justify-content: center; transition: background .15s, transform .1s;
+			align-items: center; justify-content: center;
+			transform: translateX(0);
+			transition: transform .5s ease, background .15s;
 		}
-		#ta-fab:hover { background: #153d6e; transform: scale(1.07); }
+
+		#ta-fab.ta-fab-hidden {
+			transform: translateX(50%);
+		}
+			
+		#ta-fab.ta-fab-visible {
+			background: #153d6e;
+			transform: translateX(0) !important;
+		}
+
+		#ta-fab.ta-fab-visible .ta-fab-peek { display: none; }
 
 		#ta-fab-badge {
 			position: absolute; top: -4px; right: -4px; background: #d33;
@@ -118,126 +130,135 @@
 			justify-content: center; pointer-events: none;
 		}
 
-		.ta-btn-spinner {
-			display: inline-block; width: 10px; height: 10px;
-			border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
-			border-radius: 50%; animation: ta-spin .6s linear infinite;
+		.ta-fab-peek {
+			position: absolute; left: 6px; font-size: 0.75em;
+			font-weight: 700; pointer-events: none; line-height: 1;
 		}
-		@keyframes ta-spin { to { transform: rotate(360deg); } }
-
-		.ta-overlay {
-			position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000;
-			display: flex; align-items: center; justify-content: center; padding: 12px;
-			animation: ta-fadein .15s ease-out;
+		
+		.ta-fab-main {
+			display: flex; align-items: center; justify-content: center;
 		}
 
-		.ta-dialog {
-			background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px;
-			width: min(820px, 96%); max-height: 88vh; display: flex; flex-direction: column;
-			box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif;
-			font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden;
-		}
-		.ta-dialog-header {
-			padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0;
-			font-weight: 700; font-size: 1.05em; display: flex; align-items: center;
-			justify-content: space-between; flex-shrink: 0;
-		}
-		.ta-dialog-header-left { display: flex; align-items: center; gap: 7px; }
-		.ta-dialog-close {
-			background: none; border: none; font-size: 1.2em; cursor: pointer;
-			color: #54595d; padding: 0 2px; line-height: 1;
-		}
-		.ta-dialog-close:hover { color: #000; }
-		.ta-dialog-body { padding: 0; overflow-y: auto; flex: 1; }
-		.ta-dialog-footer {
-			padding: 10px 14px; background: #f8f9fa; border-top: 1px solid #eaecf0;
-			display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0;
-		}
-		.ta-dialog-footer-right { display: flex; gap: 7px; }
+        .ta-btn-spinner {
+            display: inline-block; width: 10px; height: 10px;
+            border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+            border-radius: 50%; animation: ta-spin .6s linear infinite;
+        }
+        @keyframes ta-spin { to { transform: rotate(360deg); } }
 
-		.ta-dialog-sm { width: min(520px, 96%); }
+        .ta-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000;
+            display: flex; align-items: center; justify-content: center; padding: 12px;
+            animation: ta-fadein .15s ease-out;
+        }
 
-		.ta-toolbar {
-			padding: 9px 14px; background: #f0f2f5; border-bottom: 1px solid #eaecf0;
-			display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-		}
-		.ta-toolbar label { display: flex; align-items: center; gap: 5px; font-size: 0.87em; font-weight: 600; cursor: pointer; }
-		.ta-filter-age { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
-		.ta-filter-age select { padding: 2px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.95em; }
+        .ta-dialog {
+            background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px;
+            width: min(820px, 96%); max-height: 88vh; display: flex; flex-direction: column;
+            box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif;
+            font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden;
+        }
+        .ta-dialog-header {
+            padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0;
+            font-weight: 700; font-size: 1.05em; display: flex; align-items: center;
+            justify-content: space-between; flex-shrink: 0;
+        }
+        .ta-dialog-header-left { display: flex; align-items: center; gap: 7px; }
+        .ta-dialog-close {
+            background: none; border: none; font-size: 1.2em; cursor: pointer;
+            color: #54595d; padding: 0 2px; line-height: 1;
+        }
+        .ta-dialog-close:hover { color: #000; }
+        .ta-dialog-body { padding: 0; overflow-y: auto; flex: 1; }
+        .ta-dialog-footer {
+            padding: 10px 14px; background: #f8f9fa; border-top: 1px solid #eaecf0;
+            display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0;
+        }
+        .ta-dialog-footer-right { display: flex; gap: 7px; }
 
-		.ta-thread-table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
-		.ta-thread-table th {
-			padding: 7px 12px; background: #f8f9fa; border-bottom: 2px solid #eaecf0;
-			text-align: left; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1;
-		}
-		.ta-thread-table td { padding: 8px 12px; border-bottom: 1px solid #eaecf0; vertical-align: middle; }
-		.ta-thread-table tr:last-child td { border-bottom: none; }
-		.ta-thread-table tr.ta-selected td { background: #eaf0fb; }
-		.ta-thread-table tr:hover td { background: #f4f7fc; }
-		.ta-thread-table tr.ta-selected:hover td { background: #ddeaf9; }
+        .ta-dialog-sm { width: min(520px, 96%); }
 
-		.ta-td-check  { width: 32px; text-align: center; }
-		.ta-td-title  { max-width: 240px; word-break: break-word; }
-		.ta-td-ts     { white-space: nowrap; color: #54595d; min-width: 90px; }
-		.ta-td-year   { width: 80px; text-align: center; }
-		.ta-td-dest   { color: #3366cc; font-size: 0.85em; word-break: break-all; }
-		.ta-td-status { width: 90px; text-align: center; }
+        .ta-toolbar {
+            padding: 9px 14px; background: #f0f2f5; border-bottom: 1px solid #eaecf0;
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        .ta-toolbar label { display: flex; align-items: center; gap: 5px; font-size: 0.87em; font-weight: 600; cursor: pointer; }
+        .ta-filter-age { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
+        .ta-filter-age select { padding: 2px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.95em; }
 
-		.ta-year-sel {
-			padding: 2px 4px; border: 1px solid #a2a9b1; border-radius: 3px;
-			font-size: 0.9em; width: 70px; cursor: pointer; background: #fff; color: #202122;
-		}
-		.ta-year-sel.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
+        .ta-thread-table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+        .ta-thread-table th {
+            padding: 7px 12px; background: #f8f9fa; border-bottom: 2px solid #eaecf0;
+            text-align: left; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1;
+        }
+        .ta-thread-table td { padding: 8px 12px; border-bottom: 1px solid #eaecf0; vertical-align: middle; }
+        .ta-thread-table tr:last-child td { border-bottom: none; }
+        .ta-thread-table tr.ta-selected td { background: #eaf0fb; }
+        .ta-thread-table tr:hover td { background: #f4f7fc; }
+        .ta-thread-table tr.ta-selected:hover td { background: #ddeaf9; }
 
-		.ta-year-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.88em; }
-		.ta-year-row label { color: #54595d; white-space: nowrap; }
-		.ta-year-row select { padding: 3px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 1em; cursor: pointer; }
-		.ta-year-row select.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
+        .ta-td-check  { width: 32px; text-align: center; }
+        .ta-td-title  { max-width: 240px; word-break: break-word; }
+        .ta-td-ts     { white-space: nowrap; color: #54595d; min-width: 90px; }
+        .ta-td-year   { width: 80px; text-align: center; }
+        .ta-td-dest   { color: #3366cc; font-size: 0.85em; word-break: break-all; }
+        .ta-td-status { width: 90px; text-align: center; }
 
-		.ta-dest-preview { color: #3366cc; font-size: 0.87em; word-break: break-all; margin-top: 4px; }
+        .ta-year-sel {
+            padding: 2px 4px; border: 1px solid #a2a9b1; border-radius: 3px;
+            font-size: 0.9em; width: 70px; cursor: pointer; background: #fff; color: #202122;
+        }
+        .ta-year-sel.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
 
-		.ta-badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 0.8em; font-weight: 600; }
-		.ta-badge-pending  { background: #eaf0fb; color: #2a55a8; }
-		.ta-badge-loading  { background: #fef6e4; color: #705000; }
-		.ta-badge-ok       { background: #d5f5e3; color: #1a6b3a; }
-		.ta-badge-error    { background: #fde8e8; color: #b00; }
-		.ta-badge-skipped  { background: #f0f0f0; color: #555; }
+        .ta-year-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.88em; }
+        .ta-year-row label { color: #54595d; white-space: nowrap; }
+        .ta-year-row select { padding: 3px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 1em; cursor: pointer; }
+        .ta-year-row select.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
 
-		.ta-footer-info { font-size: 0.83em; color: #54595d; }
+        .ta-dest-preview { color: #3366cc; font-size: 0.87em; word-break: break-all; margin-top: 4px; }
 
-		.ta-confirm-list { margin: 8px 0 0; padding: 0; list-style: none; max-height: 200px; overflow-y: auto; border: 1px solid #eaecf0; border-radius: 4px; }
-		.ta-confirm-list li { padding: 6px 10px; border-bottom: 1px solid #eaecf0; font-size: 0.87em; }
-		.ta-confirm-list li:last-child { border-bottom: none; }
-		.ta-confirm-list .ta-dest { color: #3366cc; font-size: 0.82em; }
+        .ta-badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 0.8em; font-weight: 600; }
+        .ta-badge-pending  { background: #eaf0fb; color: #2a55a8; }
+        .ta-badge-loading  { background: #fef6e4; color: #705000; }
+        .ta-badge-ok       { background: #d5f5e3; color: #1a6b3a; }
+        .ta-badge-error    { background: #fde8e8; color: #b00; }
+        .ta-badge-skipped  { background: #f0f0f0; color: #555; }
 
-		.ta-dialog-body-pad { padding: 14px 16px; }
-		.ta-progress-log { margin-top: 10px; font-size: 0.85em; color: #54595d; min-height: 1.5em; }
+        .ta-footer-info { font-size: 0.83em; color: #54595d; }
 
-		@keyframes ta-fadein  { from { opacity:0 } to { opacity:1 } }
-		@keyframes ta-slidein { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }
+        .ta-confirm-list { margin: 8px 0 0; padding: 0; list-style: none; max-height: 200px; overflow-y: auto; border: 1px solid #eaecf0; border-radius: 4px; }
+        .ta-confirm-list li { padding: 6px 10px; border-bottom: 1px solid #eaecf0; font-size: 0.87em; }
+        .ta-confirm-list li:last-child { border-bottom: none; }
+        .ta-confirm-list .ta-dest { color: #3366cc; font-size: 0.82em; }
 
-		@media (prefers-color-scheme: dark) {
-			.ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
-			.ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
-			.ta-toolbar { background:#252525; border-color:#3a3a3a; }
-			.ta-thread-table th { background:#252525; border-color:#3a3a3a; }
-			.ta-thread-table td { border-color:#3a3a3a; }
-			.ta-thread-table tr.ta-selected td { background:#1a2a45; }
-			.ta-thread-table tr:hover td { background:#252535; }
-			.ta-thread-table tr.ta-selected:hover td { background:#1e3050; }
-			.ta-td-ts  { color:#a2a9b1; }
-			.ta-td-dest { color:#6699ff; }
-			.ta-confirm-list { border-color:#3a3a3a; }
-			.ta-confirm-list li { border-color:#3a3a3a; }
-			.ta-filter-age select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-			.ta-year-sel { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-			.ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-			.ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-			.ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-			.ta-btn { border-color:#54595d; color:#eaecf0; }
-			.ta-btn:hover { background:#252535; border-color:#6699ff; }
-		}
-	`);
+        .ta-dialog-body-pad { padding: 14px 16px; }
+        .ta-progress-log { margin-top: 10px; font-size: 0.85em; color: #54595d; min-height: 1.5em; }
+
+        @keyframes ta-fadein  { from { opacity:0 } to { opacity:1 } }
+        @keyframes ta-slidein { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }
+
+        @media (prefers-color-scheme: dark) {
+            .ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
+            .ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
+            .ta-toolbar { background:#252525; border-color:#3a3a3a; }
+            .ta-thread-table th { background:#252525; border-color:#3a3a3a; }
+            .ta-thread-table td { border-color:#3a3a3a; }
+            .ta-thread-table tr.ta-selected td { background:#1a2a45; }
+            .ta-thread-table tr:hover td { background:#252535; }
+            .ta-thread-table tr.ta-selected:hover td { background:#1e3050; }
+            .ta-td-ts  { color:#a2a9b1; }
+            .ta-td-dest { color:#6699ff; }
+            .ta-confirm-list { border-color:#3a3a3a; }
+            .ta-confirm-list li { border-color:#3a3a3a; }
+            .ta-filter-age select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+            .ta-year-sel { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+            .ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
+            .ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+            .ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
+            .ta-btn { border-color:#54595d; color:#eaecf0; }
+            .ta-btn:hover { background:#252535; border-color:#6699ff; }
+        }
+    `);
 
 	// ============================================================================
 	// [SECTION 05] OVERLAY STACK
@@ -1025,7 +1046,7 @@
 			},
 			{
 				id: 'pnb',
-				re: /(?:([\u0660-\u0669\u06F0-\u06F9]{1,2}):([\u0660-\u0669\u06F0-\u06F9]{2})[,،][\s\u200E\u200F]+)?([\u0660-\u0669\u06F0-\u06F9]{1,2})[\s\u200E\u200F]+([\u0600-\u06FF]+)[\s\u200E\u200F]+([\u0660-\u0669\u06F0-\u06F9]{4})(?:[\s\u200E\u200F]*\([A-Za-z]+\))?/g,
+				re: /(?:([\u0660-\u0669\u06F0-\u06F9]{1,2}):([\u0660-\u0669\u06F0-\u06F9]{2})[,\,][\s\u200E\u200F]+)?([\u0660-\u0669\u06F0-\u06F9]{1,2})[\s\u200E\u200F]+([\u0600-\u06FF]+)[\s\u200E\u200F]+([\u0660-\u0669\u06F0-\u06F9]{4})(?:[\s\u200E\u200F]*\([A-Za-z]+\))?/g,
 				extract(m, {
 					PNB,
 					pnbToNum
@@ -1532,10 +1553,10 @@
 		const bodyPad = document.createElement('div');
 		bodyPad.className = 'ta-dialog-body-pad';
 		bodyPad.innerHTML = `
-			<p style="margin:0">No level-2 sections were found on this talk page.</p>
-			<p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
-				Kiroku Hokan-ki only detects threads marked with <code>== … ==</code> headings.
-			</p>`;
+            <p style="margin:0">No level-2 sections were found on this talk page.</p>
+            <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
+                Kiroku Hokan-ki only detects threads marked with <code>== … ==</code> headings.
+            </p>`;
 		body.appendChild(bodyPad);
 
 		const footerRight = document.createElement('div');
@@ -1590,16 +1611,16 @@
 		const filterWrap = document.createElement('div');
 		filterWrap.className = 'ta-filter-age';
 		filterWrap.innerHTML = `<span>Filter:</span>
-			<select id="ta-filter-sel">
-				<option value="0">All threads</option>
-				<option value="7">Older than 7 days</option>
-				<option value="14">Older than 14 days</option>
-				<option value="21">Older than 21 days</option>
-				<option value="30">Older than 30 days</option>
-				<option value="60">Older than 60 days</option>
-				<option value="90">Older than 90 days</option>
-				<option value="180">Older than 180 days</option>
-			</select>`;
+            <select id="ta-filter-sel">
+                <option value="0">All threads</option>
+                <option value="7">Older than 7 days</option>
+                <option value="14">Older than 14 days</option>
+                <option value="21">Older than 21 days</option>
+                <option value="30">Older than 30 days</option>
+                <option value="60">Older than 60 days</option>
+                <option value="90">Older than 90 days</option>
+                <option value="180">Older than 180 days</option>
+            </select>`;
 
 		toolbar.appendChild(lblAll);
 		toolbar.appendChild(loadTsBtn);
@@ -1610,15 +1631,15 @@
 		const table = document.createElement('table');
 		table.className = 'ta-thread-table';
 		table.innerHTML = `<thead>
-			<tr>
-				<th class="ta-td-check"></th>
-				<th class="ta-td-title">Thread title</th>
-				<th class="ta-td-ts">Last active</th>
-				<th class="ta-td-year" title="Target archive year — can be changed manually">Year</th>
-				<th class="ta-td-dest">Archive destination</th>
-				<th class="ta-td-status">Status</th>
-			</tr>
-		</thead>`;
+            <tr>
+                <th class="ta-td-check"></th>
+                <th class="ta-td-title">Thread title</th>
+                <th class="ta-td-ts">Last active</th>
+                <th class="ta-td-year" title="Target archive year — can be changed manually">Year</th>
+                <th class="ta-td-dest">Archive destination</th>
+                <th class="ta-td-status">Status</th>
+            </tr>
+        </thead>`;
 		const tbody = document.createElement('tbody');
 		table.appendChild(tbody);
 		tableWrap.appendChild(table);
@@ -1696,12 +1717,12 @@
 				const displayTitle = mw.html.escape(item.thread.titleClean);
 
 				tr.innerHTML = `
-					<td class="ta-td-check"><input type="checkbox" class="ta-row-chk" data-vi="${vi}" ${item.selected ? 'checked' : ''}></td>
-					<td class="ta-td-title">${displayTitle}</td>
-					<td class="ta-td-ts">${tsText}</td>
-					<td class="ta-td-year"><select class="${yearSelCls} ta-row-year" title="Override archive year">${buildYearOptions(item.year)}</select></td>
-					<td class="ta-td-dest ta-row-dest">${mw.html.escape(item.archiveTitle)}</td>
-					<td class="ta-td-status">${renderBadge(item.status)}</td>`;
+                    <td class="ta-td-check"><input type="checkbox" class="ta-row-chk" data-vi="${vi}" ${item.selected ? 'checked' : ''}></td>
+                    <td class="ta-td-title">${displayTitle}</td>
+                    <td class="ta-td-ts">${tsText}</td>
+                    <td class="ta-td-year"><select class="${yearSelCls} ta-row-year" title="Override archive year">${buildYearOptions(item.year)}</select></td>
+                    <td class="ta-td-dest ta-row-dest">${mw.html.escape(item.archiveTitle)}</td>
+                    <td class="ta-td-status">${renderBadge(item.status)}</td>`;
 
 				tr.querySelector('.ta-row-chk').addEventListener('change', e => {
 					item.selected = e.target.checked;
@@ -1805,7 +1826,7 @@
 		selected.forEach(item => {
 			const li = document.createElement('li');
 			li.innerHTML = `<b>${mw.html.escape(item.thread.titleClean)}</b>
-				<div class="ta-dest">→ ${mw.html.escape(item.archiveTitle)}</div>`;
+                <div class="ta-dest">→ ${mw.html.escape(item.archiveTitle)}</div>`;
 			ul.appendChild(li);
 		});
 		bodyPad.appendChild(ul);
@@ -1912,8 +1933,8 @@
 		const bodyPad = document.createElement('div');
 		bodyPad.className = 'ta-dialog-body-pad';
 		bodyPad.innerHTML = `
-			<div style="font-weight:700;margin-bottom:6px">${mw.html.escape(thread.titleClean)}</div>
-			<div class="ta-progress-log" id="ta-prog">⏳ Detecting timestamp…</div>`;
+            <div style="font-weight:700;margin-bottom:6px">${mw.html.escape(thread.titleClean)}</div>
+            <div class="ta-progress-log" id="ta-prog">⏳ Detecting timestamp…</div>`;
 		body.appendChild(bodyPad);
 
 		let timestamp = null;
@@ -1929,20 +1950,20 @@
 			const curArchiveTitle = getArchiveTitle(activeYear);
 			const isOverride = activeYear !== detectedYear;
 			bodyPad.innerHTML = `
-				<div style="font-weight:700;margin-bottom:8px">${mw.html.escape(thread.titleClean)}</div>
-				<div>Last active: <b>${mw.html.escape(tsDisplay)}</b>
-					${!timestamp ? '<span style="color:#b00"> (not detected)</span>' : ''}
-				</div>
-				<div class="ta-year-row">
-					<label for="ta-single-year">Archive year:</label>
-					<select id="ta-single-year" class="${isOverride ? 'ta-year-override' : ''}">
-						${buildYearOptions(activeYear)}
-					</select>
-					${isOverride ? `<span style="font-size:0.82em;color:#d4730a">✏️ Manually overridden</span>` : `<span style="font-size:0.82em;color:#72777d">Auto-detected from timestamp</span>`}
-				</div>
-				<div class="ta-dest-preview">→ ${mw.html.escape(curArchiveTitle)}</div>
-				${!timestamp ? '<div style="margin-top:8px;color:#d4730a">⚠️ Timestamp not detected. Verify the year before continuing.</div>' : ''}
-				<div class="ta-progress-log" id="ta-prog2"></div>`;
+                <div style="font-weight:700;margin-bottom:8px">${mw.html.escape(thread.titleClean)}</div>
+                <div>Last active: <b>${mw.html.escape(tsDisplay)}</b>
+                    ${!timestamp ? '<span style="color:#b00"> (not detected)</span>' : ''}
+                </div>
+                <div class="ta-year-row">
+                    <label for="ta-single-year">Archive year:</label>
+                    <select id="ta-single-year" class="${isOverride ? 'ta-year-override' : ''}">
+                        ${buildYearOptions(activeYear)}
+                    </select>
+                    ${isOverride ? `<span style="font-size:0.82em;color:#d4730a">✏️ Manually overridden</span>` : `<span style="font-size:0.82em;color:#72777d">Auto-detected from timestamp</span>`}
+                </div>
+                <div class="ta-dest-preview">→ ${mw.html.escape(curArchiveTitle)}</div>
+                ${!timestamp ? '<div style="margin-top:8px;color:#d4730a">⚠️ Timestamp not detected. Verify the year before continuing.</div>' : ''}
+                <div class="ta-progress-log" id="ta-prog2"></div>`;
 
 			bodyPad.querySelector('#ta-single-year').addEventListener('change', e => {
 				activeYear = parseInt(e.target.value, 10);
@@ -1969,9 +1990,8 @@
 				try {
 					await archiveThread(thread, finalArchiveTitle);
 					bodyPad.innerHTML =
-						`
-						<div>✅ Section <b>${mw.html.escape(thread.titleClean)}</b> archived successfully.</div>
-						<div class="ta-dest-preview" style="margin-top:6px">→ <a href="${mw.util.getUrl(finalArchiveTitle)}" target="_blank">${mw.html.escape(finalArchiveTitle)}</a></div>`;
+						`<div>✅ Section <b>${mw.html.escape(thread.titleClean)}</b> archived successfully.</div>
+                        <div class="ta-dest-preview" style="margin-top:6px">→ <a href="${mw.util.getUrl(finalArchiveTitle)}" target="_blank">${mw.html.escape(finalArchiveTitle)}</a></div>`;
 					footerRight.innerHTML = '';
 					addFooterBtn(footerRight, 'Close & reload', 'mw-ui-progressive',
 						() => {
@@ -2017,13 +2037,17 @@
 			fab.title = threads.length ?
 				`Kiroku Hokan-ki (${threads.length} thread${threads.length !== 1 ? 's' : ''})` :
 				'Kiroku Hokan-ki — no threads found';
-			fab.innerHTML = threads.length ? `📦<span id="ta-fab-badge">${threads.length}</span>` :
-				`📦`;
+			fab.innerHTML = threads.length
+				? `<span class="ta-fab-peek">‹</span><span class="ta-fab-main">📦<span id="ta-fab-badge">${threads.length}</span></span>`
+				: `<span class="ta-fab-peek">‹</span><span class="ta-fab-main">📦</span>`;
 			fab.addEventListener('click', () => {
 				if (!threads.length) openEmptyNotice();
 				else openArchiveManager(threads);
 			});
+			fab.addEventListener('mouseenter', () => fab.classList.add('ta-fab-visible'));
+			fab.addEventListener('mouseleave', () => fab.classList.remove('ta-fab-visible'));
 			document.body.appendChild(fab);
+			setTimeout(() => fab.classList.add('ta-fab-hidden'), 5000);
 		}
 
 		if (!threads.length) return;
