@@ -940,6 +940,15 @@
 				}
 			},
 			{
+				id: 'en-utc-signature',
+				re: /\b(\d{1,2}):(\d{2}),\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s+\(UTC\)/g,
+				extract(m, { MONTHS_LATIN }) {
+					const mon = MONTHS_LATIN[m[4].toLowerCase()];
+					if (!mon) return null;
+					return [+m[5], mon, +m[3], +m[1], +m[2]];
+				}
+			},
+			{
 				id: 'iso-space',
 				re: /\b(\d{4})-(\d{2})-(\d{2})\s+(\d{2})[.:](\d{2})\b(?!\d|:Z)/g,
 				extract(m) {
@@ -948,7 +957,7 @@
 			},
 			{
 				id: 'dmy-latin',
-				re: /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b(?:\s+(?:pukul\s+)?(\d{1,2})[.:](\d{2}))?/g,
+				re: /\b(?:(\d{1,2}):(\d{2}),\s+)(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b(?:\s+(?:pukul\s+)?(\d{1,2})[.:](\d{2}))?/g,
 				extract(m, {
 					MONTHS_LATIN
 				}) {
