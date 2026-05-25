@@ -8,7 +8,7 @@
  * [USERS: Restricted to account Rachmat04 (enforced by script).]
  */
 // <nowiki>
-(function() {
+(function () {
 	'use strict';
 
 	// ============================================================================
@@ -467,6 +467,57 @@
 				'mai': 5,
 				'nopember': 11
 			},
+			NUSANTARA: {
+				'januari': 1,
+				'januwari': 1,
+				'jânuwari': 1,
+				'pibuari': 2,
+				'februari': 2,
+				'pebruari': 2,
+				'pèbruari': 2,
+				'péberuwari': 2,
+				'fèbruari': 2,
+				'pabuwari': 2,
+				'fèbruwari': 2,
+				'pébruari': 2,
+				'marit': 3,
+				'maret': 3,
+				'mareq': 3,
+				'april': 4,
+				'apperileng': 4,
+				'mai': 5,
+				'mei': 5,
+				'méi': 5,
+				'mèi': 5,
+				'may': 5,
+				'juni': 6,
+				'junè': 6,
+				'juli': 7,
+				'agustus': 8,
+				'agussutuq': 8,
+				'siptimbir': 9,
+				'september': 9,
+				'sèptèmber': 9,
+				'séttémberéq': 9,
+				'séptémber': 9,
+				'uktubir': 10,
+				'oktober': 10,
+				'oqtoberéq': 10,
+				'nupimbir': 11,
+				'november': 11,
+				'nopember': 11,
+				'nopèmber': 11,
+				'nopémberéq': 11,
+				'novèmber': 11,
+				'nopémber': 11,
+				'disimbir': 12,
+				'desember': 12,
+				'désèmber': 12,
+				'désémberéq': 12,
+				'dhésèmber': 12,
+				'ḍèsèmber': 12,
+				'désémber': 12
+			},
 			ACE: {
 				'buleuen sa': 1,
 				'buleuen duwa': 2,
@@ -884,6 +935,17 @@
 				}
 			},
 			{
+				id: 'nusantara',
+				re: /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([A-Za-z\u00C0-\u024F\u1E00-\u1EFF]+)\s+(\d{4})\b(?:\s+(\d{1,2})[.:](\d{2}))?/g,
+				extract(m, {
+					MONTHS_LATIN
+				}) {
+					const mon = MONTHS_LATIN[m[4].toLowerCase()];
+					if (!mon) return null;
+					return [+m[5], mon, +m[3], +(m[6] || m[1] || 0), +(m[7] || m[2] || 0)];
+				}
+			},
+			{
 				id: 'ja',
 				re: /(\d{4})年(\d{1,2})月(\d{1,2})日\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})/g,
 				extract(m) {
@@ -1249,7 +1311,7 @@
 	async function getThreadLastTimestamp(threadContent) {
 		const mm = TIMESTAMP_CONFIG.monthMaps;
 		const MONTHS_LATIN = Object.assign({}, mm.EN, mm.ID, mm.AR, mm.HE, mm.HI, mm.PNB, mm.BN, mm
-			.GOR_MIN);
+			.GOR_MIN, mm.NUSANTARA);
 
 		function pnbToNum(str) {
 			if (!str) return 0;
@@ -1336,7 +1398,7 @@
 	// Orchestrates MediaWiki API requests to save threads and clean the source page.
 	// ============================================================================
 	async function archiveBatch(items, onProgress) {
-		const report = onProgress || function() {};
+		const report = onProgress || function () {};
 		const ok = [];
 		const errors = [];
 
