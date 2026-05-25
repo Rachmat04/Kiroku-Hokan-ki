@@ -94,7 +94,7 @@
 	mw.util.addCSS(`
 		.ta-btn {
 			display: inline-flex; align-items: center; justify-content: center;
-			margin-left: 8px; padding: 1px 5px; font-size: 1em; line-height: 1.4;
+			margin-left: 8px; padding: 1px 4px; font-size: 0.8em; line-height: 1.4;
 			background: none; border: 1px solid #a2a9b1; border-radius: 3px;
 			cursor: pointer; vertical-align: middle; transition: background .15s, border-color .15s;
 			white-space: nowrap; color: inherit;
