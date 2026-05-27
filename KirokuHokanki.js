@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 1.1.0
+ * Version 1.1.1
  * Talk Page Archiving Gadget
  * ============================================================================
  *
@@ -217,26 +217,29 @@
         @keyframes ta-slidein { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }
 
         @media (prefers-color-scheme: dark) {
-            .ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
-            .ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
-            .ta-toolbar { background:#252525; border-color:#3a3a3a; }
-            .ta-thread-table th { background:#252525; border-color:#3a3a3a; }
-            .ta-thread-table td { border-color:#3a3a3a; }
-            .ta-thread-table tr.ta-selected td { background:#1a2a45; }
-            .ta-thread-table tr:hover td { background:#252535; }
-            .ta-thread-table tr.ta-selected:hover td { background:#1e3050; }
-            .ta-td-ts  { color:#a2a9b1; }
-            .ta-td-dest { color:#6699ff; }
-            .ta-confirm-list { border-color:#3a3a3a; }
-            .ta-confirm-list li { border-color:#3a3a3a; }
-            .ta-filter-age select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-            .ta-year-sel { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-            .ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-            .ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-            .ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-            .ta-btn { border-color:#54595d; color:#eaecf0; }
-            .ta-btn:hover { background:#252535; border-color:#6699ff; }
-        }
+          .ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
+          .ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
+          .ta-toolbar { background:#252525; border-color:#3a3a3a; }
+          .ta-thread-table th { background:#252525; border-color:#3a3a3a; }
+          .ta-thread-table td { border-color:#3a3a3a; }
+          .ta-thread-table tr.ta-selected td { background:#1a2a45; }
+          .ta-thread-table tr:hover td { background:#252535; }
+          .ta-thread-table tr.ta-selected:hover td { background:#1e3050; }
+
+          .ta-td-ts, .ta-footer-info, .ta-progress-log, .ta-year-row label { color:#a2a9b1; }
+          
+          .ta-td-dest, .ta-dest-preview, .ta-confirm-list .ta-dest { color:#6699ff; }
+          
+          .ta-confirm-list { border-color:#3a3a3a; }
+          .ta-confirm-list li { border-color:#3a3a3a; }
+          .ta-filter-age select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+          .ta-year-sel { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+          .ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
+          .ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+          .ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
+          .ta-btn { border-color:#54595d; color:#eaecf0; }
+          .ta-btn:hover { background:#252535; border-color:#6699ff; }
+      }
     `);
 
   // ============================================================================
