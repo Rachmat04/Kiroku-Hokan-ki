@@ -1,7 +1,8 @@
 /**
  * ============================================================================
- *  KIROKU HŌKAN-KI — 記録保管機
- *  Talk Page Archiving Gadget
+ * KIROKU HŌKAN-KI — 記録保管機
+ * Version 1.1.0
+ * Talk Page Archiving Gadget
  * ============================================================================
  *
  * WHAT THIS DOES
@@ -104,7 +105,7 @@
 
   // ============================================================================
   // [SECTION 04] STYLESHEET
-  // Injects CSS for UI components like buttons, dialogs, and the floating button.
+  // Injects CSS for UI components like buttons, dialogs, and overlays.
   // ============================================================================
   mw.util.addCSS(`
         .ta-btn {
@@ -116,33 +117,6 @@
         }
         .ta-btn:hover { background: #eaf0fb; border-color: #36c; }
         .ta-btn:disabled { opacity: .45; cursor: not-allowed; }
-
-        #ta-fab {
-            position: fixed; bottom: 28px; right: 28px; z-index: 9999;
-            width: 52px; height: 52px; border-radius: 50%; background: #1a4e8a;
-            color: #fff; border: none; font-size: 1.5em; cursor: pointer;
-            box-shadow: 0 4px 16px rgba(0,0,0,.32); display: flex;
-            align-items: center; justify-content: center;
-            transform: translateX(0);
-            transition: transform .5s ease, background .15s;
-        }
-
-        #ta-fab:hover { background: #153d6e; }
-
-        #ta-fab.ta-fab-hidden {
-            transform: translateX(75%);
-        }
-            
-        #ta-fab-badge {
-            position: absolute; top: -4px; right: -4px; background: #d33;
-            color: #fff; border-radius: 50%; width: 20px; height: 20px;
-            font-size: 0.6em; font-weight: 700; display: flex; align-items: center;
-            justify-content: center; pointer-events: none;
-        }
-
-        .ta-fab-main {
-            display: flex; align-items: center; justify-content: center;
-        }
 
         .ta-btn-spinner {
             display: inline-block; width: 10px; height: 10px;
@@ -307,7 +281,7 @@
 
     const header = document.createElement("div");
     header.className = "ta-dialog-header";
-    header.innerHTML = `<div class="ta-dialog-header-left">${opts.icon || "📦"} ${mw.html.escape(opts.title)}</div>`;
+    header.innerHTML = `<div class="ta-dialog-header-left">${opts.icon || "📜"} ${mw.html.escape(opts.title)}</div>`;
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "ta-dialog-close";
@@ -1545,7 +1519,7 @@
   function openEmptyNotice() {
     const { overlay, body, footer } = createDialog({
       title: "Kiroku Hokan-ki",
-      icon: "📦",
+      icon: "📜",
       small: true,
     });
     const bodyPad = document.createElement("div");
@@ -1584,7 +1558,7 @@
 
     const { overlay, body, footer } = createDialog({
       title: "Kiroku Hokan-ki",
-      icon: "📦",
+      icon: "📜",
       onClose: () => {},
     });
 
@@ -1829,7 +1803,7 @@
   ) {
     const { overlay, body, footer } = createDialog({
       title: `Confirm archiving ${selected.length} thread${selected.length !== 1 ? "s" : ""}`,
-      icon: "📋",
+      icon: "📜",
       small: true,
     });
 
@@ -1955,11 +1929,11 @@
 
     const { overlay, body, footer } = createDialog({
       title: "Archive section",
-      icon: "🗃️",
+      icon: "📜",
       small: true,
       onClose: () => {
         btn.disabled = false;
-        btn.textContent = "🗃️";
+        btn.textContent = "📜";
       },
     });
 
@@ -2060,7 +2034,7 @@
 
   // ============================================================================
   // [SECTION 16] BUTTON INJECTION
-  // Hooks into the DOM to add per-heading archive buttons and the bulk manager FAB.
+  // Hooks into the DOM to add per-heading archive buttons and the bulk manager link.
   // ============================================================================
   async function injectButtons() {
     let wikitext;
@@ -2080,49 +2054,28 @@
 
     const threads = parseThreads(wikitext);
 
-    if (!document.getElementById("ta-fab")) {
-      const fab = document.createElement("button");
-      fab.id = "ta-fab";
-      fab.title = threads.length
-        ? `Kiroku Hokan-ki (${threads.length} thread${threads.length !== 1 ? "s" : ""})`
-        : "Kiroku Hokan-ki — no threads found";
+    if (!document.getElementById("ca-kiroku-hokanki")) {
+      const portletLabel = threads.length
+        ? `📜 Kiroku Hōkan-ki (${threads.length})`
+        : "📜 Kiroku Hōkan-ki";
 
-      fab.innerHTML = threads.length
-        ? `<span class="ta-fab-main">📦<span id="ta-fab-badge">${threads.length}</span></span>`
-        : `<span class="ta-fab-main">📦</span>`;
-
-      fab.addEventListener("click", () => {
+      $(
+        mw.util.addPortletLink(
+          "p-cactions",
+          "#",
+          portletLabel,
+          "ca-kiroku-hokanki",
+          "Open Kiroku Hōkan-ki archive manager",
+        ),
+      ).on("click", function (e) {
+        e.preventDefault();
         if (!threads.length) openEmptyNotice();
         else openArchiveManager(threads);
       });
-
-      let showTimeout;
-      let hideTimeout;
-
-      const hideFab = () => fab.classList.add("ta-fab-hidden");
-      const showFab = () => fab.classList.remove("ta-fab-hidden");
-
-      fab.addEventListener("mouseenter", () => {
-        clearTimeout(hideTimeout);
-        if (fab.classList.contains("ta-fab-hidden")) {
-          // Beri jeda 1 detik sebelum memunculkan FAB
-          showTimeout = setTimeout(showFab, 1000);
-        }
-      });
-
-      fab.addEventListener("mouseleave", () => {
-        clearTimeout(showTimeout);
-        // Sembunyikan FAB kembali jika ditinggalkan selama 5 detik
-        hideTimeout = setTimeout(hideFab, 5000);
-      });
-
-      document.body.appendChild(fab);
-
-      // Sembunyikan otomatis setelah 5 detik pertama kali dimuat
-      hideTimeout = setTimeout(hideFab, 5000);
     }
 
     if (!threads.length) return;
+
     const headings = Array.from(
       document.querySelectorAll("#mw-content-text h2"),
     );
@@ -2132,7 +2085,7 @@
 
       const btn = document.createElement("button");
       btn.className = "ta-btn";
-      btn.textContent = "🗃️";
+      btn.textContent = "📜";
       btn.title = "Archive this section";
       btn.addEventListener("click", (e) => {
         e.preventDefault();
