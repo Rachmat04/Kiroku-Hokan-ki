@@ -1482,7 +1482,7 @@
           action: "edit",
           title: archiveTitle,
           text: arcText.trim(),
-          summary: `Archived from [[${srcTitle}]]: ${archivedTitles} (via [[m:User:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
+          summary: `Archived from [[${srcTitle}]]: ${archivedTitles} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
         });
         arcItems.forEach((it) => ok.push(it.thread.title));
       } catch (err) {
@@ -1514,7 +1514,7 @@
         action: "edit",
         title: PAGE_NAME,
         text: srcText,
-        summary: `Archived ${ok.length} section(s): ${archivedList} (via [[m:User:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
+        summary: `Archived ${ok.length} section(s): ${archivedList} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
         basetimestamp: baseTimestamp,
       });
     }
