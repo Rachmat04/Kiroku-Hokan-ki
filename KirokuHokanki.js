@@ -1,550 +1,240 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 1.1.1
+ * Version 2.0.0
  * Talk Page Archiving Gadget
  * ============================================================================
+ * 
+ * PURPOSE:
+ * An automated Talk Page Archiving Gadget for MediaWiki that streamlines user 
+ * talk page maintenance by moving inactive discussions into subpages.
  *
- * WHAT THIS DOES
- * - Adds archive controls to level-2 discussion headings
- * - Detects and manages conversation threads
- * - Moves old discussions into year-based archive pages
- * - Provides a bulk management panel for moderation-style cleanup
- *
- * HOW IT WORKS
- * - Scans talk pages for structured discussion sections
- * - Sorts threads by age (year-based logic)
- * - Moves selected threads to archive subpages
- * - Cleans up source page after successful transfer
- *
- * WHERE IT WORKS
- * - Talk namespaces only
- * - Requires edit/write API permissions
- *
- * ACCESS CONTROL
- * - Restricted usage (account-level enforcement inside script)
- * - Intended for single-user tooling and maintenance workflows
- *
- * NOTES
- * - Designed for structured wiki discussion pages
- * - Behavior depends on consistent heading format
- * - Bulk actions are irreversible unless manually restored
- *
+ * KEY FEATURES:
+ * - Automatically splits talk pages into individual threads using level-2 headings.
+ * - Parses signature timestamps dynamically across 400+ wiki languages.
+ * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
+ * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
  * ============================================================================
  */
 // <nowiki>
+
 (function () {
   "use strict";
 
   // ============================================================================
-  // [SECTION 00] USER GUARD
-  // Restricts script execution to the designated user account.
+  // [MODULE 01] GLOBAL APP CONFIGURATION
   // ============================================================================
-  const cfg = mw.config.get();
-  const curUser = cfg.wgUserName;
-  if (curUser !== "Rachmat04") return;
+  class ArchiveConfig {
+    static get ALLOWED_USER() {
+      return "Rachmat04";
+    }
+    static get TARGET_NAMESPACE() {
+      return 3;
+    } // User Talk Namespace
 
-  // ============================================================================
-  // [SECTION 01] PAGE GUARD
-  // Ensures the script only runs on the specific user talk page in view mode.
-  // ============================================================================
-  if (cfg.wgNamespaceNumber !== 3) return;
-  if (cfg.wgTitle !== "Rachmat04") return;
+    /**
+     * Dynamically detects the active wiki language environments at runtime.
+     * Scales across all 400+ languages natively without bloating performance.
+     */
+    static get TARGET_LANGUAGES() {
+      const activeContexts = new Set([
+        "en",
+        mw.config.get("wgContentLanguage"),
+        mw.config.get("wgUserLanguage"),
+      ]);
+      return Array.from(activeContexts).filter(Boolean);
+    }
+
+    /**
+     * Computes the regional archive subpage string prefix.
+     */
+    static getArchiveSubpagePrefix() {
+      const subdomain = window.location.hostname.split(".")[0];
+      const ARSIP_WIKIS = new Set([
+        "id",
+        "ace",
+        "ban",
+        "bjn",
+        "map-bms",
+        "bbc",
+        "bbc-latn",
+        "bbj",
+        "bew",
+        "bug",
+        "gor",
+        "jv",
+        "kge",
+        "mad",
+        "btm",
+        "min",
+        "nia",
+        "su",
+      ]);
+      return ARSIP_WIKIS.has(subdomain) ? "Arsip" : "Archives";
+    }
+  }
+
+  const mwConfig = mw.config.get();
+
+  // Environment Guardrails
+  if (mwConfig.wgUserName !== ArchiveConfig.ALLOWED_USER) return;
+  if (mwConfig.wgNamespaceNumber !== ArchiveConfig.TARGET_NAMESPACE) return;
+  if (mwConfig.wgTitle !== ArchiveConfig.ALLOWED_USER) return;
   if (
-    cfg.wgAction === "history" ||
-    cfg.wgDiffNewId ||
-    cfg.wgDiffOldId ||
-    cfg.wgCurRevisionId !== cfg.wgRevisionId
+    mwConfig.wgAction === "history" ||
+    mwConfig.wgDiffNewId ||
+    mwConfig.wgDiffOldId ||
+    mwConfig.wgCurRevisionId !== mwConfig.wgRevisionId
   )
     return;
 
-  const api = new mw.Api();
-  const PAGE_NAME = cfg.wgPageName;
-
   // ============================================================================
-  // [SECTION 02] ARCHIVE SUBPAGE NAME
-  // Determines the localized archive subpage prefix (e.g., Arsip or Archives).
+  // [MODULE 02] MEDIAWIKI API SERVICE LAYER
   // ============================================================================
-  function getArchiveSubpage() {
-    const subdomain = window.location.hostname.split(".")[0];
-    const ARSIP_WIKIS = new Set([
-      "id",
-      "ace",
-      "ban",
-      "bjn",
-      "map-bms",
-      "bbc",
-      "bew",
-      "bug",
-      "gor",
-      "jv",
-      "kge",
-      "mad",
-      "btm",
-      "min",
-      "nia",
-      "su",
-    ]);
-    return ARSIP_WIKIS.has(subdomain) ? "Arsip" : "Archives";
-  }
-  const ARCHIVE_SUBPAGE = getArchiveSubpage();
+  class WikiApiService {
+    constructor() {
+      this.api = new mw.Api();
+      this.pageName = mwConfig.wgPageName;
+    }
 
-  // ============================================================================
-  // [SECTION 03] WIKILINK STRIPPER
-  // Cleans wikitext syntax and HTML tags from headings to display plain text.
-  // ============================================================================
-  function stripWikilinks(title) {
-    let out = title.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2");
-    out = out.replace(/\[\[([^\]]+)\]\]/g, (_m, target) => {
-      const parts = target.split(/[:/]/);
-      return parts[parts.length - 1].trim();
-    });
-    out = out.replace(/<[^>]+>/g, "");
-    return out.trim();
-  }
+    async getPageSourceData() {
+      const response = await this.api.get({
+        action: "query",
+        prop: "revisions",
+        rvprop: ["content", "timestamp"],
+        titles: this.pageName,
+        formatversion: 2,
+      });
+      const page = response.query.pages[0];
+      return {
+        text: page.revisions?.[0]?.content || "",
+        baseTimestamp: page.revisions?.[0]?.timestamp || "",
+      };
+    }
 
-  // ============================================================================
-  // [SECTION 04] STYLESHEET
-  // Injects CSS for UI components like buttons, dialogs, and overlays.
-  // ============================================================================
-  mw.util.addCSS(`
-        .ta-btn {
-            display: inline-flex; align-items: center; justify-content: center;
-            margin-left: 8px; padding: 1px 4px; font-size: 0.8em; line-height: 1.4;
-            background: none; border: 1px solid #a2a9b1; border-radius: 3px;
-            cursor: pointer; vertical-align: middle; transition: background .15s, border-color .15s;
-            white-space: nowrap; color: inherit;
-        }
-        .ta-btn:hover { background: #eaf0fb; border-color: #36c; }
-        .ta-btn:disabled { opacity: .45; cursor: not-allowed; }
+    async fetchSystemMessages(targetLanguage, messages) {
+      const response = await this.api.get({
+        action: "query",
+        meta: "allmessages",
+        ammessages: messages.join("|"),
+        amlang: targetLanguage,
+        formatversion: 2,
+      });
+      return response.query?.allmessages || [];
+    }
 
-        .ta-btn-spinner {
-            display: inline-block; width: 10px; height: 10px;
-            border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
-            border-radius: 50%; animation: ta-spin .6s linear infinite;
-        }
-        @keyframes ta-spin { to { transform: rotate(360deg); } }
+    async saveToArchiveTarget(archiveTitle, threadsWikitext, summary) {
+      const response = await this.api.get({
+        action: "query",
+        prop: "revisions",
+        rvprop: "content",
+        titles: archiveTitle,
+        formatversion: 2,
+      });
+      const page = response.query.pages[0];
+      const primaryContent = page.revisions?.[0]?.content || "";
+      const formattedPayload = primaryContent
+        ? `${primaryContent.trim()}\n\n${threadsWikitext.trim()}\n`
+        : `${threadsWikitext.trim()}\n`;
 
-        .ta-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000;
-            display: flex; align-items: center; justify-content: center; padding: 12px;
-            animation: ta-fadein .15s ease-out;
-        }
-
-        .ta-dialog {
-            background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px;
-            width: min(820px, 96%); max-height: 88vh; display: flex; flex-direction: column;
-            box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif;
-            font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden;
-        }
-        .ta-dialog-header {
-            padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0;
-            font-weight: 700; font-size: 1.05em; display: flex; align-items: center;
-            justify-content: space-between; flex-shrink: 0;
-        }
-        .ta-dialog-header-left { display: flex; align-items: center; gap: 7px; }
-        .ta-dialog-close {
-            background: none; border: none; font-size: 1.2em; cursor: pointer;
-            color: #54595d; padding: 0 2px; line-height: 1;
-        }
-        .ta-dialog-close:hover { color: #000; }
-        .ta-dialog-body { padding: 0; overflow-y: auto; flex: 1; }
-        .ta-dialog-footer {
-            padding: 10px 14px; background: #f8f9fa; border-top: 1px solid #eaecf0;
-            display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0;
-        }
-        .ta-dialog-footer-right { display: flex; gap: 7px; }
-
-        .ta-dialog-sm { width: min(520px, 96%); }
-
-        .ta-toolbar {
-            padding: 9px 14px; background: #f0f2f5; border-bottom: 1px solid #eaecf0;
-            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-        }
-        .ta-toolbar label { display: flex; align-items: center; gap: 5px; font-size: 0.87em; font-weight: 600; cursor: pointer; }
-        .ta-filter-age { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
-        .ta-filter-age select { padding: 2px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.95em; }
-
-        .ta-thread-table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
-        .ta-thread-table th {
-            padding: 7px 12px; background: #f8f9fa; border-bottom: 2px solid #eaecf0;
-            text-align: left; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1;
-        }
-        .ta-thread-table td { padding: 8px 12px; border-bottom: 1px solid #eaecf0; vertical-align: middle; }
-        .ta-thread-table tr:last-child td { border-bottom: none; }
-        .ta-thread-table tr.ta-selected td { background: #eaf0fb; }
-        .ta-thread-table tr:hover td { background: #f4f7fc; }
-        .ta-thread-table tr.ta-selected:hover td { background: #ddeaf9; }
-
-        .ta-td-check  { width: 32px; text-align: center; }
-        .ta-td-title  { max-width: 240px; word-break: break-word; }
-        .ta-td-ts     { white-space: nowrap; color: #54595d; min-width: 90px; }
-        .ta-td-year   { width: 80px; text-align: center; }
-        .ta-td-dest   { color: #3366cc; font-size: 0.85em; word-break: break-all; }
-        .ta-td-status { width: 90px; text-align: center; }
-
-        .ta-year-sel {
-            padding: 2px 4px; border: 1px solid #a2a9b1; border-radius: 3px;
-            font-size: 0.9em; width: 70px; cursor: pointer; background: #fff; color: #202122;
-        }
-        .ta-year-sel.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
-
-        .ta-year-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.88em; }
-        .ta-year-row label { color: #54595d; white-space: nowrap; }
-        .ta-year-row select { padding: 3px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 1em; cursor: pointer; }
-        .ta-year-row select.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
-
-        .ta-dest-preview { color: #3366cc; font-size: 0.87em; word-break: break-all; margin-top: 4px; }
-
-        .ta-badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 0.8em; font-weight: 600; }
-        .ta-badge-pending  { background: #eaf0fb; color: #2a55a8; }
-        .ta-badge-loading  { background: #fef6e4; color: #705000; }
-        .ta-badge-ok       { background: #d5f5e3; color: #1a6b3a; }
-        .ta-badge-error    { background: #fde8e8; color: #b00; }
-        .ta-badge-skipped  { background: #f0f0f0; color: #555; }
-
-        .ta-footer-info { font-size: 0.83em; color: #54595d; }
-
-        .ta-confirm-list { margin: 8px 0 0; padding: 0; list-style: none; max-height: 200px; overflow-y: auto; border: 1px solid #eaecf0; border-radius: 4px; }
-        .ta-confirm-list li { padding: 6px 10px; border-bottom: 1px solid #eaecf0; font-size: 0.87em; }
-        .ta-confirm-list li:last-child { border-bottom: none; }
-        .ta-confirm-list .ta-dest { color: #3366cc; font-size: 0.82em; }
-
-        .ta-dialog-body-pad { padding: 14px 16px; }
-        .ta-progress-log { margin-top: 10px; font-size: 0.85em; color: #54595d; min-height: 1.5em; }
-
-        @keyframes ta-fadein  { from { opacity:0 } to { opacity:1 } }
-        @keyframes ta-slidein { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }
-
-        @media (prefers-color-scheme: dark) {
-          .ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
-          .ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
-          .ta-toolbar { background:#252525; border-color:#3a3a3a; }
-          .ta-thread-table th { background:#252525; border-color:#3a3a3a; }
-          .ta-thread-table td { border-color:#3a3a3a; }
-          .ta-thread-table tr.ta-selected td { background:#1a2a45; }
-          .ta-thread-table tr:hover td { background:#252535; }
-          .ta-thread-table tr.ta-selected:hover td { background:#1e3050; }
-
-          .ta-td-ts, .ta-footer-info, .ta-progress-log, .ta-year-row label { color:#a2a9b1; }
-          
-          .ta-td-dest, .ta-dest-preview, .ta-confirm-list .ta-dest { color:#6699ff; }
-          
-          .ta-confirm-list { border-color:#3a3a3a; }
-          .ta-confirm-list li { border-color:#3a3a3a; }
-          .ta-filter-age select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-          .ta-year-sel { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-          .ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-          .ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
-          .ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-          .ta-btn { border-color:#54595d; color:#eaecf0; }
-          .ta-btn:hover { background:#252535; border-color:#6699ff; }
-      }
-    `);
-
-  // ============================================================================
-  // [SECTION 05] OVERLAY STACK
-  // Tracks active dialogs and handles escape key for graceful closing.
-  // ============================================================================
-  const overlayStack = [];
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    const top = overlayStack[overlayStack.length - 1];
-    if (!top) return;
-    top.closeHandler();
-  });
-
-  // ============================================================================
-  // [SECTION 06] DIALOG UTILITIES
-  // DOM helpers to construct and append the UI overlays and dialog modals.
-  // ============================================================================
-  function createOverlay() {
-    const overlay = document.createElement("div");
-    overlay.className = "ta-overlay";
-    document.body.appendChild(overlay);
-    overlay.closeHandler = () => {
-      overlay.remove();
-      const idx = overlayStack.indexOf(overlay);
-      if (idx !== -1) overlayStack.splice(idx, 1);
-    };
-    overlayStack.push(overlay);
-    return overlay;
-  }
-
-  function createDialog(opts) {
-    const overlay = createOverlay();
-    overlay.closeHandler = () => {
-      overlay.remove();
-      const idx = overlayStack.indexOf(overlay);
-      if (idx !== -1) overlayStack.splice(idx, 1);
-      if (opts.onClose) opts.onClose();
-    };
-    const dialog = document.createElement("div");
-    dialog.className = "ta-dialog" + (opts.small ? " ta-dialog-sm" : "");
-
-    const header = document.createElement("div");
-    header.className = "ta-dialog-header";
-    header.innerHTML = `<div class="ta-dialog-header-left">${opts.icon || "📜"} ${mw.html.escape(opts.title)}</div>`;
-
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "ta-dialog-close";
-    closeBtn.textContent = "✕";
-    closeBtn.title = "Close";
-    closeBtn.addEventListener("click", () => overlay.closeHandler());
-    header.appendChild(closeBtn);
-
-    const body = document.createElement("div");
-    body.className = "ta-dialog-body";
-
-    const footer = document.createElement("div");
-    footer.className = "ta-dialog-footer";
-
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    dialog.appendChild(footer);
-    overlay.appendChild(dialog);
-
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) overlay.closeHandler();
-    });
-
-    return {
-      overlay,
-      dialog,
-      header,
-      body,
-      footer,
-    };
-  }
-
-  function addFooterBtn(container, label, cls, onClick) {
-    const b = document.createElement("button");
-    b.className = `mw-ui-button ${cls}`;
-    b.textContent = label;
-    b.addEventListener("click", onClick);
-    container.appendChild(b);
-    return b;
-  }
-
-  // ============================================================================
-  // [SECTION 07] THREAD PARSER
-  // Parses wikitext into iterable thread objects divided by level-2 headings.
-  // ============================================================================
-  function parseThreads(wikitext) {
-    const re = /^==\s*([^=\n][^\n]*?)\s*==\s*$/gm;
-    const pos = [];
-    let m;
-
-    while ((m = re.exec(wikitext)) !== null) {
-      pos.push({
-        title: m[1].trim(),
-        start: m.index,
+      return this.api.postWithToken("csrf", {
+        action: "edit",
+        title: archiveTitle,
+        text: formattedPayload,
+        summary: summary,
       });
     }
 
-    pos.push({
-      title: null,
-      start: wikitext.length,
-    });
-
-    return pos.slice(0, -1).map((p, i) => ({
-      title: p.title,
-      titleClean: stripWikilinks(p.title),
-      content: wikitext.substring(p.start, pos[i + 1].start),
-      start: p.start,
-      end: pos[i + 1].start,
-    }));
+    async updateTalkSourcePage(dynamicContent, summary, baseTimestamp) {
+      return this.api.postWithToken("csrf", {
+        action: "edit",
+        title: this.pageName,
+        text: dynamicContent,
+        summary: summary,
+        basetimestamp: baseTimestamp,
+      });
+    }
   }
 
   // ============================================================================
-  // [SECTION 08] TIMESTAMP DETECTION
-  // Configures multi-language regex patterns and extracts the latest signature dates.
+  // [MODULE 03] DYNAMIC LOCALISATION ENGINE
   // ============================================================================
-  const TIMESTAMP_CONFIG = {
-    monthMaps: {
-      EN: {
-        january: 1,
-        february: 2,
-        march: 3,
-        april: 4,
-        may: 5,
-        june: 6,
-        july: 7,
-        august: 8,
-        september: 9,
-        october: 10,
-        november: 11,
-        december: 12,
-        jan: 1,
-        feb: 2,
-        mar: 3,
-        apr: 4,
-        jun: 6,
-        jul: 7,
-        aug: 8,
-        sep: 9,
-        sept: 9,
-        oct: 10,
-        nov: 11,
-        dec: 12,
-      },
-      ID: {
-        januari: 1,
-        februari: 2,
-        maret: 3,
-        april: 4,
-        mei: 5,
-        juni: 6,
-        juli: 7,
-        agustus: 8,
-        september: 9,
-        oktober: 10,
-        november: 11,
-        desember: 12,
-      },
-      AR: {
-        يناير: 1,
-        فبراير: 2,
-        مارس: 3,
-        أبريل: 4,
-        مايو: 5,
-        يونيو: 6,
-        يوليو: 7,
-        أغسطس: 8,
-        سبتمبر: 9,
-        أكتوبر: 10,
-        نوفمبر: 11,
-        ديسمبر: 12,
-      },
-      HE: {
-        ינואר: 1,
-        בינואר: 1,
-        פברואר: 2,
-        בפברואר: 2,
-        מרץ: 3,
-        במרץ: 3,
-        אפריל: 4,
-        באפריל: 4,
-        מאי: 5,
-        במאי: 5,
-        יוני: 6,
-        ביוני: 6,
-        יולי: 7,
-        ביולי: 7,
-        אוגוסט: 8,
-        באוגוסט: 8,
-        ספטמבר: 9,
-        בספטמבר: 9,
-        אוקטובר: 10,
-        באוקטובר: 10,
-        נובמבר: 11,
-        בנובמבר: 11,
-        דצמבר: 12,
-        בדצמבר: 12,
-      },
-      HI: {
-        जनवरी: 1,
-        फ़रवरी: 2,
-        फरवरी: 2,
-        मार्च: 3,
-        अप्रैल: 4,
-        मई: 5,
-        जून: 6,
-        जुलाई: 7,
-        अगस्त: 8,
-        सितंबर: 9,
-        सितम्बर: 9,
-        अक्टूबर: 10,
-        नवंबर: 11,
-        नवम्बर: 11,
-        दिसंबर: 12,
-        दिसम्बर: 12,
-      },
-      PNB: {
-        جنوری: 1,
-        فروری: 2,
-        مارچ: 3,
-        اپریل: 4,
-        مئی: 5,
-        جون: 6,
-        جولائی: 7,
-        اگست: 8,
-        ستمبر: 9,
-        اکتوبر: 10,
-        نومبر: 11,
-        دسمبر: 12,
-      },
-      BN: {
-        জানুয়ারি: 1,
-        ফেব্রুয়ারি: 2,
-        মার্চ: 3,
-        এপ্রিল: 4,
-        মে: 5,
-        জুন: 6,
-        জুলাই: 7,
-        আগস্ট: 8,
-        সেপ্টেম্বর: 9,
-        অক্টোবর: 10,
-        নভেম্বর: 11,
-        ডিসেম্বর: 12,
-      },
-      GOR_MIN: {
-        pebruari: 2,
-        mai: 5,
-        nopember: 11,
-      },
-      NUSANTARA: {
-        januari: 1,
-        januwari: 1,
-        jânuwari: 1,
-        pibuari: 2,
-        februari: 2,
-        pebruari: 2,
-        pèbruari: 2,
-        péberuwari: 2,
-        fèbruari: 2,
-        pabuwari: 2,
-        fèbruwari: 2,
-        pébruari: 2,
-        marit: 3,
-        maret: 3,
-        mareq: 3,
-        april: 4,
-        apperileng: 4,
-        mai: 5,
-        mei: 5,
-        méi: 5,
-        mèi: 5,
-        may: 5,
-        juni: 6,
-        junè: 6,
-        juli: 7,
-        agustus: 8,
-        agussutuq: 8,
-        siptimbir: 9,
-        september: 9,
-        sèptèmber: 9,
-        séttémberéq: 9,
-        séptémber: 9,
-        uktubir: 10,
-        oktober: 10,
-        oqtoberéq: 10,
-        nupimbir: 11,
-        november: 11,
-        nopember: 11,
-        nopèmber: 11,
-        nopémberéq: 11,
-        novèmber: 11,
-        nopémber: 11,
-        disimbir: 12,
-        desember: 12,
-        désèmber: 12,
-        désémberéq: 12,
-        dhésèmber: 12,
-        ḍèsèmber: 12,
-        désémber: 12,
-      },
-      ACE: {
+  class LocalizationEngine {
+    constructor(apiService) {
+      this.apiService = apiService;
+      this.monthMap = {};
+    }
+
+    async initialiseSubsystem() {
+      const primaryMessageKeys = [
+        "january",
+        "february",
+        "march",
+        "april",
+        "may_long",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+        "january-gen",
+        "february-gen",
+        "march-gen",
+        "april-gen",
+        "may-gen",
+        "june-gen",
+        "july-gen",
+        "august-gen",
+        "september-gen",
+        "october-gen",
+        "november-gen",
+        "december-gen",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "may",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
+      ];
+
+      const fetchingPromises = ArchiveConfig.TARGET_LANGUAGES.map(
+        async (langCode) => {
+          try {
+            const messages = await this.apiService.fetchSystemMessages(
+              langCode,
+              primaryMessageKeys,
+            );
+            messages.forEach((msg) => {
+              if (msg.content && !msg.missing) {
+                const cleanTerm = msg.content.toLowerCase().trim();
+                const normalizedIndex =
+                  primaryMessageKeys.indexOf(msg.name) % 12;
+                this.monthMap[cleanTerm] = normalizedIndex + 1;
+              }
+            });
+          } catch (err) {
+            console.warn(
+              `[KirokuHokanki] Localisation failed for language code [${langCode}]:`,
+              err,
+            );
+          }
+        },
+      );
+
+      await Promise.all(fetchingPromises);
+      this.injectLocalSystemOverrides();
+    }
+
+    injectLocalSystemOverrides() {
+      const regionalOverrides = {
         "buleuen sa": 1,
         "buleuen duwa": 2,
         "buleuen lhèe": 3,
@@ -557,1554 +247,958 @@
         "buleuen siplôh": 10,
         "buleuen siblaih": 11,
         "buleuen duwa blah": 12,
-      },
-      ARZ: {
-        يناير: 1,
-        فبراير: 2,
-        مارس: 3,
-        أبريل: 4,
-        مايو: 5,
-        يونيو: 6,
-        يوليو: 7,
-        أغسطس: 8,
-        سبتمبر: 9,
-        أكتوبر: 10,
-        نوفمبر: 11,
-        ديسمبر: 12,
-      },
-      UR: {
-        جنوری: 1,
-        فروری: 2,
-        مارچ: 3,
-        اپریل: 4,
-        مئی: 5,
-        جون: 6,
-        جولائی: 7,
-        اگست: 8,
-        ستمبر: 9,
-        اکتوبر: 10,
-        نومبر: 11,
-        دسمبر: 12,
-      },
-      BAN: {
-        januari: 1,
-        pébruari: 2,
-        maret: 3,
-        april: 4,
-        méi: 5,
-        juni: 6,
-        juli: 7,
-        agustus: 8,
-        séptémber: 9,
-        oktober: 10,
-        nopémber: 11,
-        désémber: 12,
-      },
-      AF: {
-        januarie: 1,
-        februarie: 2,
-        maart: 3,
-        april: 4,
-        mei: 5,
-        junie: 6,
-        julie: 7,
-        augustus: 8,
-        september: 9,
-        oktober: 10,
-        november: 11,
-        desember: 12,
-      },
-      BR: {
-        genver: 1,
-        "c'hwevrer": 2,
-        meurzh: 3,
-        ebrel: 4,
-        mae: 5,
-        mezheven: 6,
-        gouere: 7,
-        eost: 8,
-        gwengolo: 9,
-        here: 10,
-        du: 11,
-        kerzu: 12,
-      },
-      CZ: {
-        ledna: 1,
-        února: 2,
-        března: 3,
-        dubna: 4,
-        května: 5,
-        června: 6,
-        července: 7,
-        srpna: 8,
-        září: 9,
-        října: 10,
-        listopadu: 11,
-        prosince: 12,
-      },
-      DA: {
-        januar: 1,
-        februar: 2,
-        marts: 3,
-        april: 4,
-        maj: 5,
-        juni: 6,
-        juli: 7,
-        august: 8,
-        september: 9,
-        oktober: 10,
-        november: 11,
-        december: 12,
-      },
-      NL: {
-        januari: 1,
-        februari: 2,
-        maart: 3,
-        april: 4,
-        mei: 5,
-        juni: 6,
-        juli: 7,
-        augustus: 8,
-        september: 9,
-        oktober: 10,
-        november: 11,
-        december: 12,
-      },
-      EO: {
-        januaro: 1,
-        februaro: 2,
-        marto: 3,
-        aprilo: 4,
-        majo: 5,
-        junio: 6,
-        julio: 7,
-        aŭgusto: 8,
-        septembro: 9,
-        oktobro: 10,
-        novembro: 11,
-        decembro: 12,
-      },
-      FI: {
-        tammikuuta: 1,
-        helmikuuta: 2,
-        maaliskuuta: 3,
-        huhtikuuta: 4,
-        toukokuuta: 5,
-        kesäkuuta: 6,
-        heinäkuuta: 7,
-        elokuuta: 8,
-        syyskuuta: 9,
-        lokakuuta: 10,
-        marraskuuta: 11,
-        joulukuuta: 12,
-      },
-      FR: {
-        janvier: 1,
-        février: 2,
-        mars: 3,
-        avril: 4,
-        mai: 5,
-        juin: 6,
-        juillet: 7,
-        août: 8,
-        septembre: 9,
-        octobre: 10,
-        novembre: 11,
-        décembre: 12,
-      },
-      DE: {
-        januar: 1,
-        februar: 2,
-        märz: 3,
-        april: 4,
-        mai: 5,
-        juni: 6,
-        juli: 7,
-        august: 8,
-        september: 9,
-        oktober: 10,
-        november: 11,
-        dezember: 12,
-      },
-      EL: {
-        ιανουαρίου: 1,
-        φεβρουαρίου: 2,
-        μαρτίου: 3,
-        απριλίου: 4,
-        μαΐου: 5,
-        ιουνίου: 6,
-        ιουλίου: 7,
-        αυγούστου: 8,
-        σεπτεμβρίου: 9,
-        οκτωβρίου: 10,
-        νοεμβρίου: 11,
-        δεκεμβρίου: 12,
-      },
-      IT: {
-        gennaio: 1,
-        febbraio: 2,
-        marzo: 3,
-        aprile: 4,
-        maggio: 5,
-        giugno: 6,
-        luglio: 7,
-        agosto: 8,
-        settembre: 9,
-        ottobre: 10,
-        novembre: 11,
-        dicembre: 12,
-      },
-      AVK: {
-        taneaksat: 1,
-        toleaksat: 2,
-        bareaksat: 3,
-        balemeaksat: 4,
-        alubeaksat: 5,
-        teveaksat: 6,
-        pereaksat: 7,
-        anyusteaksat: 8,
-        lerdeaksat: 9,
-        saneaksat: 10,
-        santaneaksat: 11,
-        santoleaksat: 12,
-      },
-      PL: {
-        stycznia: 1,
-        lutego: 2,
-        marca: 3,
-        kwietnia: 4,
-        maja: 5,
-        czerwca: 6,
-        lipca: 7,
-        sierpnia: 8,
-        września: 9,
-        października: 10,
-        listopada: 11,
-        grudnia: 12,
-      },
-      NO: {
-        januar: 1,
-        februar: 2,
-        mars: 3,
-        april: 4,
-        mai: 5,
-        juni: 6,
-        juli: 7,
-        august: 8,
-        september: 9,
-        oktober: 10,
-        november: 11,
-        desember: 12,
-      },
-      NDS: {
-        januar: 1,
-        februar: 2,
-        marz: 3,
-        mär: 3,
-        april: 4,
-        mai: 5,
-        juni: 6,
-        juli: 7,
-        august: 8,
-        aug: 8,
-        september: 9,
-        septemmer: 9,
-        oktober: 10,
-        november: 11,
-        novemmer: 11,
-        dezember: 12,
-        dezemmer: 12,
-      },
-      CY: {
-        ionawr: 1,
-        chwefror: 2,
-        mawrth: 3,
-        ebrill: 4,
-        mai: 5,
-        mehefin: 6,
-        gorffennaf: 7,
-        awst: 8,
-        medi: 9,
-        hydref: 10,
-        tachwedd: 11,
-        rhagfyr: 12,
-      },
-      SV: {
-        januari: 1,
-        februari: 2,
-        mars: 3,
-        april: 4,
-        maj: 5,
-        juni: 6,
-        juli: 7,
-        augusti: 8,
-        september: 9,
-        oktober: 10,
-        november: 11,
-        december: 12,
-      },
-      ES: {
-        enero: 1,
-        febrero: 2,
-        marzo: 3,
-        abril: 4,
-        mayo: 5,
-        junio: 6,
-        julio: 7,
-        agosto: 8,
-        septiembre: 9,
-        octubre: 10,
-        noviembre: 11,
-        diciembre: 12,
-        ene: 1,
-        feb: 2,
-        mar: 3,
-        abr: 4,
-        may: 5,
-        jun: 6,
-        jul: 7,
-        ago: 8,
-        sep: 9,
-        oct: 10,
-        nov: 11,
-        dic: 12,
-      },
-      SI: {
-        ජනවාරි: 1,
-        පෙබරවාරි: 2,
-        මාර්තු: 3,
-        අප්‍රේල්: 4,
-        මැයි: 5,
-        ජූනි: 6,
-        ජූලි: 7,
-        අගෝස්තු: 8,
-        සැප්තැම්බර: 9,
-        ඔක්තෝබර: 10,
-        නොවැම්බර: 11,
-        දෙසැම්බර්: 12,
-      },
-      PT: {
-        janeiro: 1,
-        fevereiro: 2,
-        março: 3,
-        abril: 4,
-        maio: 5,
-        junho: 6,
-        julho: 7,
-        agosto: 8,
-        setembro: 9,
-        outubro: 10,
-        novembro: 11,
-        dezembro: 12,
-      },
-      RU: {
-        января: 1,
-        февраля: 2,
-        марта: 3,
-        апреля: 4,
-        мая: 5,
-        июня: 6,
-        июля: 7,
-        августа: 8,
-        сентября: 9,
-        октября: 10,
-        ноября: 11,
-        декабря: 12,
-      },
-    },
-
-    patterns: [
-      {
-        id: "iso-full",
-        re: /\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z)?\b/g,
-        extract(m) {
-          return [+m[1], +m[2], +m[3], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "en-utc-signature",
-        re: /\b(\d{1,2}):(\d{2}),\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s+\(UTC\)/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[4].toLowerCase()];
-          if (!mon) return null;
-          return [+m[5], mon, +m[3], +m[1], +m[2]];
-        },
-      },
-      {
-        id: "iso-space",
-        re: /\b(\d{4})-(\d{2})-(\d{2})\s+(\d{2})[.:](\d{2})\b(?!\d|:Z)/g,
-        extract(m) {
-          return [+m[1], +m[2], +m[3], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "dmy-latin",
-        re: /\b(?:(\d{1,2}):(\d{2}),\s+)(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b(?:\s+(?:pukul\s+)?(\d{1,2})[.:](\d{2}))?/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[4].toLowerCase()];
-          if (!mon) return null;
-          return [
-            +m[5],
-            mon,
-            +m[3],
-            +(m[6] || m[1] || 0),
-            +(m[7] || m[2] || 0),
-          ];
-        },
-      },
-      {
-        id: "mdy",
-        re: /\b(?:(\d{1,2}):(\d{2}),\s+)?([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})\b/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[3].toLowerCase()];
-          if (!mon) return null;
-          return [+m[5], mon, +m[4], +(m[1] || 0), +(m[2] || 0)];
-        },
-      },
-      {
-        id: "ymd",
-        re: /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})\b/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[4].toLowerCase()];
-          if (!mon) return null;
-          return [+m[3], mon, +m[5], +(m[1] || 0), +(m[2] || 0)];
-        },
-      },
-      {
-        id: "nusantara",
-        re: /\b(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([A-Za-z\u00C0-\u024F\u1E00-\u1EFF]+)\s+(\d{4})\b(?:\s+(\d{1,2})[.:](\d{2}))?/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[4].toLowerCase()];
-          if (!mon) return null;
-          return [
-            +m[5],
-            mon,
-            +m[3],
-            +(m[6] || m[1] || 0),
-            +(m[7] || m[2] || 0),
-          ];
-        },
-      },
-      {
-        id: "ja",
-        re: /(\d{4})年(\d{1,2})月(\d{1,2})日\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})/g,
-        extract(m) {
-          return [+m[1], +m[2], +m[3], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "zh",
-        re: /(?:(\d{1,2}):(\d{2})\s+)?(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2}))?/g,
-        extract(m) {
-          return [
-            +m[3],
-            +m[4],
-            +m[5],
-            +(m[6] || m[1] || 0),
-            +(m[7] || m[2] || 0),
-          ];
-        },
-      },
-      {
-        id: "zh-min-nan",
-        re: /(\d{4})[\s-]*nî[\s-]*(\d{1,2})[\s-]*goe̍h[\s-]*(\d{1,2})[\s-]*ji̍t(?:\s*\(.*?\))?\s*(\d{1,2}):(\d{2})(?:\s*\(UTC\))?/g,
-        extract(m) {
-          return [+m[1], +m[2], +m[3], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "ar",
-        re: /(\d{1,2}):(\d{2})،\s*(\d{1,2})\s+([\u0600-\u06FF]+)\s+(\d{4})(?:\s*\(ت\s*ع\s*م\))?/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[4]];
-          if (!mon) return null;
-          return [+m[5], mon, +m[3], +m[1], +m[2]];
-        },
-      },
-      {
-        id: "he",
-        re: /(\d{1,2}):(\d{2}),[\s\u200E\u200F]+(\d{1,2})[\s\u200E\u200F]+([א-ת]+)[\s\u200E\u200F]+(\d{4})(?:[\s\u200E\u200F]*\([A-Z]+\))?/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[4]];
-          if (!mon) return null;
-          return [+m[5], mon, +m[3], +m[1], +m[2]];
-        },
-      },
-      {
-        id: "hi",
-        re: /(?:(\d{1,2}):(\d{2}),\s+)?(\d{1,2})\s+([\u0900-\u097F]+)\s+(\d{4})(?:\s*\([A-Z]+\))?/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[4]];
-          if (!mon) return null;
-          return [+m[5], mon, +m[3], +(m[1] || 0), +(m[2] || 0)];
-        },
-      },
-      {
-        id: "pnb",
-        re: /(?:([\u0660-\u0669\u06F0-\u06F9]{1,2}):([\u0660-\u0669\u06F0-\u06F9]{2})[,\,][\s\u200E\u200F]+)?([\u0660-\u0669\u06F0-\u06F9]{1,2})[\s\u200E\u200F]+([\u0600-\u06FF]+)[\s\u200E\u200F]+([\u0660-\u0669\u06F0-\u06F9]{4})(?:[\s\u200E\u200F]*\([A-Za-z]+\))?/g,
-        extract(m, { PNB, pnbToNum }) {
-          const mon = PNB[m[4]];
-          if (!mon) return null;
-          return [
-            pnbToNum(m[5]),
-            mon,
-            pnbToNum(m[3]),
-            pnbToNum(m[1]),
-            pnbToNum(m[2]),
-          ];
-        },
-      },
-      {
-        id: "ko",
-        re: /(\d{4})년\s+(\d{1,2})월\s+(\d{1,2})일(?:\s*\([^)]+\))?\s+(\d{1,2}):(\d{2})/g,
-        extract(m) {
-          return [+m[1], +m[2], +m[3], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "bn",
-        re: /(?:([\u09E6-\u09EF]{1,2}):([\u09E6-\u09EF]{2}),\s+)?([\u09E6-\u09EF]{1,2})\s+([\u0980-\u09FF]+)\s+([\u09E6-\u09EF]{4})(?:\s*\([^)]+\))?/g,
-        extract(m, { BN, bnToNum }) {
-          const mon = BN[m[4]];
-          if (!mon) return null;
-          return [
-            bnToNum(m[5]),
-            mon,
-            bnToNum(m[3]),
-            bnToNum(m[1]),
-            bnToNum(m[2]),
-          ];
-        },
-      },
-      {
-        id: "gor-min",
-        re: /\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s+(\d{1,2})[.:](\d{2})(?:\s*\([A-Za-z]+\))?/g,
-        extract(m, { MONTHS_LATIN }) {
-          const mon = MONTHS_LATIN[m[2].toLowerCase()];
-          if (!mon) return null;
-          return [+m[3], mon, +m[1], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "ace",
-        re: /\b(\d{1,2})\s+(buleuen\s+(?:sa|duwa\s+blah|duwa|lhèe|peuet|limöng|nam|tujôh|lapan|sikureueng|siplôh|siblaih))\s+(\d{4})\s+(\d{1,2})[.:](\d{2})(?:\s*\([A-Za-z]+\))?/gi,
-        extract(m, { ACE }) {
-          const mon = ACE[m[2].toLowerCase().replace(/\s+/g, " ")];
-          if (!mon) return null;
-          return [+m[3], mon, +m[1], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "arz",
-        re: /(\d{1,2}):(\d{2})،\s*(\d{1,2})\s+([\u0600-\u06FF]+)\s+(\d{4})/g,
-        extract(m, { ARZ }) {
-          const mon = ARZ[m[4]];
-          if (!mon) return null;
-          return [+m[5], mon, +m[3], +m[1], +m[2]];
-        },
-      },
-      {
-        id: "ur",
-        re: /(\d{1,2}):(\d{2})،\s*(\d{1,2})\s+([\u0600-\u06FF]+)\s+(\d{4})ء/g,
-        extract(m, { UR }) {
-          const mon = UR[m[4]];
-          if (!mon) return null;
-          return [+m[5], mon, +m[3], +m[1], +m[2]];
-        },
-      },
-      {
-        id: "ban",
-        re: /\b(\d{1,2})\s+([A-Za-zéè]+)\s+(\d{4})\s+(\d{1,2})[.:](\d{2})(?:\s*\(WITA\))?/gi,
-        extract(m, { BAN }) {
-          const mon = BAN[m[2].toLowerCase()];
-          if (!mon) return null;
-          return [+m[3], mon, +m[1], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "af",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/g,
-        extract(m, { AF }) {
-          const mon = AF[m[4].toLowerCase()];
-          if (!mon) return null;
-          return [+m[5], mon, +m[3], +m[1], +m[2]];
-        },
-      },
-      {
-        id: "br",
-        re: /(\d{1,2})\s+([A-Za-z'č]+)\s+(\d{4})\s+da\s+(\d{2}):(\d{2})/gi,
-        extract(m, { BR }) {
-          const mon = BR[m[2].toLowerCase()];
-          if (!mon) return null;
-          return [+m[3], mon, +m[1], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "cz",
-        re: /(\d{1,2})\.\s+(\d{1,2})\.\s+(\d{4}),\s+(\d{2}):(\d{2})/g,
-        extract(m, { CZ }) {
-          return [+m[3], +m[2], +m[1], +m[4], +m[5]];
-        },
-      },
-      {
-        id: "da",
-        re: /(\d{1,2})\.\s+([a-zæøå]+)\s+(\d{4}),\s+(\d{2}):(\d{2})/gi,
-        extract(m, { DA }) {
-          const mon = DA[m[2].toLowerCase()];
-          return mon ? [+m[3], mon, +m[1], +m[4], +m[5]] : null;
-        },
-      },
-      {
-        id: "nl",
-        re: /(\d{1,2})\s+([a-z]+)\s+(\d{4})\s+(\d{2}):(\d{2})/gi,
-        extract(m, { NL }) {
-          const mon = NL[m[2].toLowerCase()];
-          return mon ? [+m[3], mon, +m[1], +m[4], +m[5]] : null;
-        },
-      },
-      {
-        id: "eo",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\s+([a-z]+)\.\s+(\d{4})/gi,
-        extract(m, { EO }) {
-          const mon = EO[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "fi",
-        re: /(\d{1,2})\.\s+([a-z]+)\s+(\d{4})\s+kello\s+(\d{2})\.(\d{2})/gi,
-        extract(m, { FI }) {
-          const mon = FI[m[2].toLowerCase()];
-          return mon ? [+m[3], mon, +m[1], +m[4], +m[5]] : null;
-        },
-      },
-      {
-        id: "fr",
-        re: /(\d{1,2})\s+([a-zû]+)\s+(\d{4})\s+à\s+(\d{2}):(\d{2})/gi,
-        extract(m, { FR }) {
-          const mon = FR[m[2].toLowerCase()];
-          return mon ? [+m[3], mon, +m[1], +m[4], +m[5]] : null;
-        },
-      },
-      {
-        id: "de",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\.\s+([a-z.]+)\s+(\d{4})/gi,
-        extract(m, { DE }) {
-          const monthKey = m[4].replace(".", "").toLowerCase();
-          const mon = DE[monthKey];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "el",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\s+([Α-Ωα-ωίϊΐόάέύή]+)\s+(\d{4})/g,
-        extract(m, { EL }) {
-          const mon = EL[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "it",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\s+([a-z]+)\s+(\d{4})/g,
-        extract(m, { IT }) {
-          const mon = IT[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "avk",
-        re: /(\d{1,2})\s+([a-z]+)\s+(\d{4})\s+à\s+(\d{2}):(\d{2})/g,
-        extract(m, { AVK }) {
-          const mon = AVK[m[2].toLowerCase()];
-          return mon ? [+m[3], mon, +m[1], +m[4], +m[5]] : null;
-        },
-      },
-      {
-        id: "pl",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\s+([a-z]+)\s+(\d{4})/g,
-        extract(m, { PL }) {
-          const mon = PL[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "no",
-        re: /(\d{1,2})\.\s+([a-z]+)\s+(\d{4})\s+kl\.\s+(\d{2}):(\d{2})/gi,
-        extract(m, { NO }) {
-          const mon = NO[m[2].toLowerCase()];
-          return mon ? [+m[3], mon, +m[1], +m[4], +m[5]] : null;
-        },
-      },
-      {
-        id: "nds",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\.\s+([a-z.]+)\s+(\d{4})/gi,
-        extract(m, { NDS }) {
-          const monthKey = m[4].replace(".", "").toLowerCase();
-          const mon = NDS[monthKey];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "cy",
-        re: /(\d{1,2}):(\d{2}),\s+(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/gi,
-        extract(m, { CY }) {
-          const mon = CY[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "vi",
-        re: /(\d{1,2}):(\d{2}),\s+ng\u00e0y\s+(\d{1,2})\s+th\u00e1ng\s+(\d{1,2})\s+n\u0103m\s+(\d{4})/gi,
-        extract(m) {
-          return [+m[5], +m[4], +m[3], +m[1], +m[2]];
-        },
-      },
-      {
-        id: "sv",
-        re: /(\d{1,2})\s+([a-z]+)\s+(\d{4})\s+kl\.\s+(\d{1,2})\.(\d{2})/gi,
-        extract(m, { SV }) {
-          const mon = SV[m[2].toLowerCase()];
-          return mon ? [+m[3], mon, +m[1], +m[4], +m[5]] : null;
-        },
-      },
-      {
-        id: "es",
-        re: /(\d{2}):(\d{2})\s+(\d{1,2})\s+([a-z]+)\s+(\d{4})/gi,
-        extract(m, { ES }) {
-          const mon = ES[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "si",
-        re: /(\d{1,2}):(\d{2}),\s+(\d{1,2})\s+([\u0D80-\u0DFF]+)\s+(\d{4})/g,
-        extract(m, { SI }) {
-          const mon = SI[m[4]];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "pt",
-        re: /(\d{1,2})h(\d{2})min\s+de\s+(\d{1,2})\s+de\s+([a-z\u00e7]+)\s+de\s+(\d{4})/gi,
-        extract(m, { PT }) {
-          const mon = PT[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-      {
-        id: "ru",
-        re: /(\d{2}):(\d{2}),\s+(\d{1,2})\s+([а-я\u0430-\u044f]+)\s+(\d{4})/gi,
-        extract(m, { RU }) {
-          const mon = RU[m[4].toLowerCase()];
-          return mon ? [+m[5], mon, +m[3], +m[1], +m[2]] : null;
-        },
-      },
-    ],
-  };
-
-  async function getThreadLastTimestamp(threadContent) {
-    const mm = TIMESTAMP_CONFIG.monthMaps;
-    const MONTHS_LATIN = Object.assign(
-      {},
-      mm.EN,
-      mm.ID,
-      mm.AR,
-      mm.HE,
-      mm.HI,
-      mm.PNB,
-      mm.BN,
-      mm.GOR_MIN,
-      mm.NUSANTARA,
-    );
-
-    function pnbToNum(str) {
-      if (!str) return 0;
-      return parseInt(
-        str
-          .replace(/[\u0660-\u0669]/g, (d) => d.charCodeAt(0) - 0x0660)
-          .replace(/[\u06F0-\u06F9]/g, (d) => d.charCodeAt(0) - 0x06f0),
-        10,
-      );
+      };
+      Object.assign(this.monthMap, regionalOverrides);
     }
 
-    function bnToNum(str) {
-      if (!str) return 0;
-      return parseInt(
-        str.replace(/[\u09E6-\u09EF]/g, (d) => d.charCodeAt(0) - 0x09e6),
-        10,
-      );
+    getMonthMap() {
+      return this.monthMap;
+    }
+  }
+
+  // ============================================================================
+  // [MODULE 04] WIKITEXT COMPONENT PARSER
+  // ============================================================================
+  class WikitextParser {
+    static stripWikilinks(headingTitle) {
+      let cleared = headingTitle.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2");
+      cleared = cleared.replace(/\[\[([^\]]+)\]\]/g, (_match, target) => {
+        const elements = target.split(/[:/]/);
+        return elements[elements.length - 1].trim();
+      });
+      return cleared.replace(/<[^>]+>/g, "").trim();
     }
 
-    const ctx = {
-      MONTHS_LATIN,
-      ...mm,
-      pnbToNum,
-      bnToNum,
-    };
+    static dissectThreads(rawWikitext) {
+      const regexMatcher = /^==\s*([^=\n][^\n]*?)\s*==\s*$/gm;
+      const entryPoints = [];
+      let segment;
 
-    function makeDate(year, month, day, hour, min) {
-      if (year < 2001 || year > 2099) return null;
-      if (month < 1 || month > 12) return null;
-      if (day < 1 || day > 31) return null;
-      return new Date(Date.UTC(year, month - 1, day, hour || 0, min || 0, 0));
-    }
-
-    const dates = [];
-
-    for (const pat of TIMESTAMP_CONFIG.patterns) {
-      pat.re.lastIndex = 0;
-      let m;
-      while ((m = pat.re.exec(threadContent)) !== null) {
-        const parts = pat.extract(m, ctx);
-        if (!parts) continue;
-        const d = makeDate(...parts);
-        if (d) dates.push(d);
+      while ((segment = regexMatcher.exec(rawWikitext)) !== null) {
+        entryPoints.push({ title: segment[1].trim(), start: segment.index });
       }
+      entryPoints.push({ title: null, start: rawWikitext.length });
+
+      return entryPoints.slice(0, -1).map((point, index) => ({
+        title: point.title,
+        titleClean: WikitextParser.stripWikilinks(point.title),
+        content: rawWikitext.substring(
+          point.start,
+          entryPoints[index + 1].start,
+        ),
+        start: point.start,
+        end: entryPoints[index + 1].start,
+      }));
     }
 
-    if (!dates.length) {
-      const RE_YEAR = /\b(20[012]\d)\b/g;
-      let m;
-      while ((m = RE_YEAR.exec(threadContent)) !== null) {
-        const year = parseInt(m[1], 10);
-        if (year >= 2001 && year <= 2099) {
-          dates.push(new Date(Date.UTC(year, 0, 1)));
+    static normaliseNumerals(inputStr) {
+      return inputStr.replace(
+        /[\u0660-\u0669\u06F0-\u06F9\u09E6-\u09EF]/g,
+        (digitChar) => {
+          const pointCode = digitChar.charCodeAt(0);
+          if (pointCode >= 0x0660 && pointCode <= 0x0669)
+            return pointCode - 0x0660;
+          if (pointCode >= 0x06f0 && pointCode <= 0x06f9)
+            return pointCode - 0x06f0;
+          if (pointCode >= 0x09e6 && pointCode <= 0x09ef)
+            return pointCode - 0x09e6;
+          return digitChar;
+        },
+      );
+    }
+
+    static computeThreadActivityDate(contentBlock, monthMap) {
+      const normalisedContent = WikitextParser.normaliseNumerals(contentBlock);
+      const translationPatterns = [
+        {
+          id: "iso-standard",
+          re: /\b(\d{4})-(\d{2})-(\d{2})[T\s](\d{2})[.:](\d{2})[.:]?(\d{2})?(?:Z)?\b/g,
+          extract: (m) => [+m[1], +m[2], +m[3], +m[4], +m[5]],
+        },
+        {
+          id: "global-dmy-signature",
+          re: /(?:(\d{1,2})[.:](\d{2}),\s+)?(\d{1,2})[\s\u200E\u200F.\u00A0]+(\p{L}+)[\s\u200E\u200F.\u00A0]+(\d{4})\b/gu,
+          extract: (m) => {
+            const targetMonth = monthMap[m[4].toLowerCase().replace(".", "")];
+            if (!targetMonth) return null;
+            return [+m[5], targetMonth, +m[3], +(m[1] || 0), +(m[2] || 0)];
+          },
+        },
+        {
+          id: "global-mdy-signature",
+          re: /\b(\p{L}+)[\s\u200E\u200F\u00A0]+(\d{1,2}),\s+(\d{4})(?:\s*,\s*(\d{1,2})[.:](\d{2}))?/gu,
+          extract: (m) => {
+            const targetMonth = monthMap[m[1].toLowerCase().replace(".", "")];
+            if (!targetMonth) return null;
+            return [+m[3], targetMonth, +m[2], +(m[4] || 0), +(m[5] || 0)];
+          },
+        },
+      ];
+
+      let newestResolvedDate = null;
+
+      translationPatterns.forEach((pattern) => {
+        pattern.re.lastIndex = 0;
+        let compositionMatch;
+        while (
+          (compositionMatch = pattern.re.exec(normalisedContent)) !== null
+        ) {
+          const fields = pattern.extract(compositionMatch);
+          if (fields) {
+            const [yr, mo, dy, hr, mn] = fields;
+            const baselineCandidate = new Date(
+              Date.UTC(yr, mo - 1, dy, hr, mn),
+            );
+            if (!isNaN(baselineCandidate.getTime())) {
+              if (
+                !newestResolvedDate ||
+                baselineCandidate > newestResolvedDate
+              ) {
+                newestResolvedDate = baselineCandidate;
+              }
+            }
+          }
         }
+      });
+
+      return newestResolvedDate;
+    }
+
+    /**
+     * Calculates the approximate human-readable relative time string.
+     */
+    static getRelativeTimeAgo(date) {
+      if (!date) return "";
+      const diffMs = Date.now() - date.getTime();
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffDays < 1) {
+        const diffHours = Math.floor(diffMs / 3600000);
+        if (diffHours < 1) {
+          const diffMins = Math.floor(diffMs / 60000);
+          return `~${diffMins || 1} min${diffMins !== 1 ? "s" : ""} ago`;
+        }
+        return `~${diffHours} hr${diffHours !== 1 ? "s" : ""} ago`;
       }
-    }
+      if (diffDays < 7)
+        return `~${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
 
-    if (!dates.length) return null;
-    return new Date(Math.max(...dates.map((d) => d.getTime())));
+      const diffWeeks = Math.floor(diffDays / 7);
+      if (diffDays < 30)
+        return `~${diffWeeks} week${diffWeeks !== 1 ? "s" : ""} ago`;
+
+      const diffMonths = Math.floor(diffDays / 30.44);
+      if (diffDays < 365)
+        return `~${diffMonths} month${diffMonths !== 1 ? "s" : ""} ago`;
+
+      const diffYears = Math.floor(diffDays / 365.25);
+      return `~${diffYears} year${diffYears !== 1 ? "s" : ""} ago`;
+    }
   }
 
   // ============================================================================
-  // [SECTION 09] ARCHIVE PAGE TITLE HELPER
-  // Constructs the full target string for the destination archive page.
+  // [MODULE 05] USER INTERFACE DIALOG MANAGER
   // ============================================================================
-  function getArchiveTitle(year) {
-    return `${PAGE_NAME.replace(/_/g, " ")}/${ARCHIVE_SUBPAGE}/${year}`;
+  class ArchiveUIManager {
+    constructor() {
+      this.modalStack = [];
+      this.registerGlobalEscapes();
+      this.injectUtilityStyles();
+    }
+
+    registerGlobalEscapes() {
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && this.modalStack.length > 0) {
+          this.modalStack[this.modalStack.length - 1].closeHandler();
+        }
+      });
+    }
+
+    instantiateDialog(options) {
+      const overlay = document.createElement("div");
+      overlay.className = "ta-overlay";
+      document.body.appendChild(overlay);
+
+      overlay.closeHandler = () => {
+        overlay.remove();
+        this.modalStack = this.modalStack.filter((m) => m !== overlay);
+        if (options.onClose) options.onClose();
+      };
+      this.modalStack.push(overlay);
+
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) overlay.closeHandler();
+      });
+
+      const dialogBox = document.createElement("div");
+      dialogBox.className =
+        "ta-dialog" + (options.small ? " ta-dialog-sm" : "");
+
+      const headerNode = document.createElement("div");
+      headerNode.className = "ta-dialog-header";
+
+      const internalTitle = document.createElement("div");
+      internalTitle.className = "ta-dialog-header-left";
+      internalTitle.textContent = `${options.icon || "📜"} ${options.title}`;
+
+      const dismissButton = document.createElement("button");
+      dismissButton.className = "ta-dialog-close";
+      dismissButton.textContent = "✕";
+      dismissButton.onclick = () => overlay.closeHandler();
+
+      headerNode.append(internalTitle, dismissButton);
+
+      const bodyNode = document.createElement("div");
+      bodyNode.className = "ta-dialog-body";
+
+      const footerNode = document.createElement("div");
+      footerNode.className = "ta-dialog-footer";
+
+      dialogBox.append(headerNode, bodyNode, footerNode);
+      overlay.appendChild(dialogBox);
+
+      return { overlay, body: bodyNode, footer: footerNode };
+    }
+
+    static generateButton(label, styles, interactionEvent, targetParent) {
+      const buttonElement = document.createElement("button");
+      buttonElement.className = `mw-ui-button ${styles}`;
+      buttonElement.textContent = label;
+      buttonElement.addEventListener("click", interactionEvent);
+      if (targetParent) targetParent.appendChild(buttonElement);
+      return buttonElement;
+    }
+
+    injectUtilityStyles() {
+      mw.util.addCSS(`
+                .ta-btn { display: inline-flex; align-items: center; justify-content: center; margin-left: 8px; padding: 1px 4px; font-size: 0.8em; line-height: 1.4; background: none; border: 1px solid #a2a9b1; border-radius: 3px; cursor: pointer; vertical-align: middle; transition: background .15s, border-color .15s; white-space: nowrap; color: inherit; }
+                .ta-btn:hover { background: #eaf0fb; border-color: #36c; }
+                .ta-btn:disabled { opacity: .45; cursor: not-allowed; }
+                .ta-btn-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: ta-spin .6s linear infinite; }
+                @keyframes ta-spin { to { transform: rotate(360deg); } }
+                .ta-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 12px; animation: ta-fadein .15s ease-out; }
+                .ta-dialog { background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px; width: min(820px, 96%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif; font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden; }
+                .ta-dialog-header { padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0; font-weight: 700; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+                .ta-dialog-header-left { display: flex; align-items: center; gap: 7px; }
+                .ta-dialog-close { background: none; border: none; font-size: 1.2em; cursor: pointer; color: #54595d; padding: 0 2px; line-height: 1; }
+                .ta-dialog-close:hover { color: #000; }
+                .ta-dialog-body { padding: 0; overflow-y: auto; flex: 1; }
+                .ta-dialog-footer { padding: 10px 14px; background: #f8f9fa; border-top: 1px solid #eaecf0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0; }
+                .ta-dialog-footer-right { display: flex; gap: 7px; }
+                .ta-dialog-sm { width: min(520px, 96%); }
+                .ta-toolbar { padding: 9px 14px; background: #f0f2f5; border-bottom: 1px solid #eaecf0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+                .ta-toolbar label { display: flex; align-items: center; gap: 5px; font-size: 0.87em; font-weight: 600; cursor: pointer; }
+                .ta-filter-age { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
+                .ta-filter-age select { padding: 2px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.95em; }
+                .ta-thread-table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+                .ta-thread-table th { padding: 7px 12px; background: #f8f9fa; border-bottom: 2px solid #eaecf0; text-align: left; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+                .ta-thread-table td { padding: 8px 12px; border-bottom: 1px solid #eaecf0; vertical-align: middle; }
+                .ta-thread-table tr:last-child td { border-bottom: none; }
+                .ta-thread-table tr.ta-selected td { background: #eaf0fb; }
+                .ta-thread-table tr:hover td { background: #f4f7fc; }
+                .ta-thread-table tr.ta-selected:hover td { background: #ddeaf9; }
+                .ta-td-check  { width: 32px; text-align: center; }
+                .ta-td-title  { max-width: 240px; word-break: break-word; }
+                .ta-td-ts     { white-space: nowrap; color: #54595d; min-width: 90px; }
+                .ta-td-year   { width: 80px; text-align: center; }
+                .ta-td-dest   { color: #3366cc; font-size: 0.85em; word-break: break-all; }
+                .ta-td-status { width: 90px; text-align: center; }
+                .ta-year-sel { padding: 2px 4px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.9em; width: 70px; cursor: pointer; background: #fff; color: #202122; }
+                .ta-year-sel.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
+                .ta-year-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.88em; }
+                .ta-year-row label { color: #54595d; white-space: nowrap; }
+                .ta-year-row select { padding: 3px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 1em; cursor: pointer; }
+                .ta-year-row select.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
+                .ta-dest-preview { color: #3366cc; font-size: 0.87em; word-break: break-all; margin-top: 4px; }
+                .ta-badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 0.8em; font-weight: 600; }
+                .ta-badge-pending  { background: #eaf0fb; color: #2a55a8; }
+                .ta-badge-loading  { background: #fef6e4; color: #705000; }
+                .ta-badge-ok       { background: #d5f5e3; color: #1a6b3a; }
+                .ta-badge-error    { background: #fde8e8; color: #b00; }
+                .ta-badge-skipped  { background: #f0f0f0; color: #555; }
+                .ta-footer-info { font-size: 0.83em; color: #54595d; }
+                .ta-confirm-list { margin: 8px 0 0; padding: 0; list-style: none; max-height: 200px; overflow-y: auto; border: 1px solid #eaecf0; border-radius: 4px; }
+                .ta-confirm-list li { padding: 6px 10px; border-bottom: 1px solid #eaecf0; font-size: 0.87em; }
+                .ta-confirm-list li:last-child { border-bottom: none; }
+                .ta-confirm-list .ta-dest { color: #3366cc; font-size: 0.82em; }
+                .ta-dialog-body-pad { padding: 14px 16px; }
+                .ta-progress-log { margin-top: 10px; font-size: 0.85em; color: #54595d; min-height: 1.5em; }
+                @keyframes ta-fadein  { from { opacity:0 } to { opacity:1 } }
+                @keyframes ta-slidein { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }
+
+                @media (prefers-color-scheme: dark) {
+                    .ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
+                    .ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
+                    .ta-toolbar { background:#252525; border-color:#3a3a3a; }
+                    .ta-thread-table th { background:#252525; border-color:#3a3a3a; }
+                    .ta-thread-table td { border-color:#3a3a3a; }
+                    .ta-thread-table tr.ta-selected td { background:#1a2a45; }
+                    .ta-thread-table tr:hover td { background:#252535; }
+                    .ta-thread-table tr.ta-selected:hover td { background:#1e3050; }
+                    .ta-td-ts, .ta-footer-info, .ta-progress-log, .ta-year-row label { color:#a2a9b1; }
+                    .ta-td-dest, .ta-dest-preview, .ta-confirm-list .ta-dest { color:#6699ff; }
+                    .ta-confirm-list { border-color:#3a3a3a; }
+                    .ta-confirm-list li { border-color:#3a3a3a; }
+                    .ta-filter-age select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+                    .ta-year-sel { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+                    .ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
+                    .ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
+                    .ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
+                    .ta-btn { border-color:#54595d; color:#eaecf0; }
+                    .ta-btn:hover { background:#252535; border-color:#6699ff; }
+                }
+            `);
+    }
   }
 
   // ============================================================================
-  // [SECTION 10] YEAR SELECTOR OPTIONS
-  // Populates the HTML options for the archive year dropdown fields.
+  // [MODULE 06] APPLICATION ORCHESTRATION CONTROLLER
   // ============================================================================
-  function buildYearOptions(selectedYear) {
-    const cur = new Date().getUTCFullYear();
-    let html = "";
-    for (let y = cur + 1; y >= cur - 20; y--) {
-      html += `<option value="${y}" ${y === selectedYear ? "selected" : ""}>${y}</option>`;
-    }
-    return html;
-  }
-
-  // ============================================================================
-  // [SECTION 11] BATCH ARCHIVE ENGINE
-  // Orchestrates MediaWiki API requests to save threads and clean the source page.
-  // ============================================================================
-  async function archiveBatch(items, onProgress) {
-    const report = onProgress || function () {};
-    const ok = [];
-    const errors = [];
-
-    report("Fetching talk page wikitext…");
-    const srcRes = await api.get({
-      action: "query",
-      prop: "revisions",
-      rvprop: ["content", "timestamp"],
-      titles: PAGE_NAME,
-      formatversion: 2,
-    });
-    const srcPage = srcRes.query.pages[0];
-    let srcText = srcPage.revisions[0].content;
-    const baseTimestamp = srcPage.revisions[0].timestamp;
-    const srcTitle = PAGE_NAME.replace(/_/g, " ");
-
-    const byArchive = new Map();
-    for (const item of items) {
-      if (!byArchive.has(item.archiveTitle)) {
-        byArchive.set(item.archiveTitle, []);
-      }
-      byArchive.get(item.archiveTitle).push(item);
+  class GadgetController {
+    constructor() {
+      this.apiService = new WikiApiService();
+      this.localeEngine = new LocalizationEngine(this.apiService);
+      this.uiManager = new ArchiveUIManager();
+      this.archiveSubpage = ArchiveConfig.getArchiveSubpagePrefix();
+      this.threads = [];
+      this.internalState = [];
+      this.filterDays = 0;
     }
 
-    for (const [archiveTitle, arcItems] of byArchive) {
-      report(`Saving to ${archiveTitle}…`);
+    async initialise() {
       try {
-        const arcRes = await api.get({
-          action: "query",
-          prop: "revisions",
-          rvprop: "content",
-          titles: archiveTitle,
-          formatversion: 2,
-        });
-        const arcPage = arcRes.query.pages[0];
-        let arcText =
-          (arcPage.revisions &&
-            arcPage.revisions[0] &&
-            arcPage.revisions[0].content) ||
-          "";
+        const [source] = await Promise.all([
+          this.apiService.getPageSourceData(),
+          this.localeEngine.initialiseSubsystem(),
+        ]);
 
-        const appended = arcItems
-          .map((it) => it.thread.content.trim())
-          .join("\n\n");
-        arcText = arcText
-          ? `${arcText.trim()}\n\n${appended}\n`
-          : `${appended}\n`;
+        if (!source.text) return;
 
-        const archivedTitles = arcItems
-          .map((it) => `"${it.thread.title}"`)
-          .join(", ");
-        await api.postWithToken("csrf", {
-          action: "edit",
-          title: archiveTitle,
-          text: arcText.trim(),
-          summary: `Archived from [[${srcTitle}]]: ${archivedTitles} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
-        });
-        arcItems.forEach((it) => ok.push(it.thread.title));
-      } catch (err) {
-        console.error("[Kiroku Hokan-ki:Rachmat04] archive page error", err);
-        arcItems.forEach((it) =>
-          errors.push({
-            title: it.thread.title,
-            err,
-          }),
+        this.threads = WikitextParser.dissectThreads(source.text);
+        this.renderSystemPortlets();
+        this.bindInlineSectionButtons();
+      } catch (error) {
+        console.error(
+          "[KirokuHokanki] Initialization execution failed:",
+          error,
         );
       }
     }
 
-    const okSet = new Set(ok);
-    for (const item of items) {
-      if (!okSet.has(item.thread.title)) continue;
-      const escaped = item.thread.content.replace(
-        /[.*+?^${}()|[\]\\]/g,
-        "\\$&",
-      );
-      srcText = srcText.replace(new RegExp(escaped), "");
+    getArchiveDestinationPath(year) {
+      return `${mwConfig.wgPageName.replace(/_/g, " ")}/${this.archiveSubpage}/${year}`;
     }
-    srcText = srcText.replace(/\n{3,}/g, "\n\n").trim();
 
-    if (ok.length > 0) {
-      report("Saving talk page…");
-      const archivedList = ok.map((t) => `"${t}"`).join(", ");
-      await api.postWithToken("csrf", {
-        action: "edit",
-        title: PAGE_NAME,
-        text: srcText,
-        summary: `Archived ${ok.length} section(s): ${archivedList} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
-        basetimestamp: baseTimestamp,
+    renderSystemPortlets() {
+      const portletLabel = this.threads.length
+        ? `📜 Kiroku Hokan-ki (${this.threads.length})`
+        : "📜 Kiroku Hokan-ki";
+
+      const portletLink = mw.util.addPortletLink(
+        "p-cactions",
+        "#",
+        portletLabel,
+        "ca-kiroku-hokanki",
+        "Open Kiroku Hokan-ki archive manager",
+      );
+
+      $(portletLink).on("click", (event) => {
+        event.preventDefault();
+        if (!this.threads.length) this.displayEmptyWarningNotice();
+        else this.openBulkArchivePanel();
       });
     }
 
-    return {
-      ok,
-      errors,
-    };
-  }
+    bindInlineSectionButtons() {
+      const headingNodes = Array.from(
+        document.querySelectorAll("#mw-content-text h2"),
+      );
+      headingNodes.forEach((heading, index) => {
+        const threadItem = this.threads[index];
+        if (!threadItem || heading.querySelector(".ta-btn")) return;
 
-  async function archiveThread(thread, archiveTitle) {
-    const result = await archiveBatch(
-      [
-        {
-          thread,
-          archiveTitle,
-        },
-      ],
-      () => {},
-    );
-    if (result.errors.length) throw result.errors[0].err;
-  }
+        const inlineBtn = document.createElement("button");
+        inlineBtn.className = "ta-btn";
+        inlineBtn.textContent = "📜";
+        inlineBtn.title = "Archive with Kiroku Hokan-ki";
 
-  // ============================================================================
-  // [SECTION 12] EMPTY STATE NOTICE
-  // Renders a fallback dialog UI if no valid level-2 sections are found on the page.
-  // ============================================================================
-  function openEmptyNotice() {
-    const { overlay, body, footer } = createDialog({
-      title: "Kiroku Hokan-ki",
-      icon: "📜",
-      small: true,
-    });
-    const bodyPad = document.createElement("div");
-    bodyPad.className = "ta-dialog-body-pad";
-    bodyPad.innerHTML = `
-            <p style="margin:0">No level-2 sections were found on this talk page.</p>
-            <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
-                Kiroku Hokan-ki only detects threads marked with <code>== … ==</code> headings.
-            </p>`;
-    body.appendChild(bodyPad);
+        inlineBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          this.openSingleArchivePanel(threadItem, inlineBtn);
+        });
 
-    const footerRight = document.createElement("div");
-    footerRight.className = "ta-dialog-footer-right";
-    footer.appendChild(footerRight);
-    addFooterBtn(footerRight, "Close", "mw-ui-quiet", () =>
-      overlay.closeHandler(),
-    );
-  }
+        const structuralEditSection = heading.querySelector(".mw-editsection");
+        if (structuralEditSection)
+          heading.insertBefore(inlineBtn, structuralEditSection);
+        else heading.appendChild(inlineBtn);
+      });
+    }
 
-  // ============================================================================
-  // [SECTION 13] ARCHIVE MANAGER PANEL
-  // Renders the main bulk archiving UI, including filtering and table interactions.
-  // ============================================================================
-  async function openArchiveManager(allThreads) {
-    const items = allThreads.map((t) => ({
-      thread: t,
-      ts: null,
-      tsLoaded: false,
-      year: new Date().getUTCFullYear(),
-      archiveTitle: getArchiveTitle(new Date().getUTCFullYear()),
-      status: "pending",
-      selected: false,
-    }));
+    displayEmptyWarningNotice() {
+      const { overlay, body, footer } = this.uiManager.instantiateDialog({
+        title: "Kiroku Hokan-ki",
+        icon: "📜",
+        small: true,
+      });
 
-    let filterDays = 0;
+      const paddingContainer = document.createElement("div");
+      paddingContainer.className = "ta-dialog-body-pad";
+      paddingContainer.innerHTML = `
+                <p style="margin:0">No discussions were found on this talk page.</p>
+                <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
+                    Kiroku Hokan-ki only detects sections created with standard level-2 headings (<code>== … ==</code>).
+                </p>`;
+      body.appendChild(paddingContainer);
 
-    const { overlay, body, footer } = createDialog({
-      title: "Kiroku Hokan-ki",
-      icon: "📜",
-      onClose: () => {},
-    });
+      const rightContainer = document.createElement("div");
+      rightContainer.className = "ta-dialog-footer-right";
+      footer.appendChild(rightContainer);
 
-    const toolbar = document.createElement("div");
-    toolbar.className = "ta-toolbar";
-
-    const chkAll = document.createElement("input");
-    chkAll.type = "checkbox";
-    chkAll.id = "ta-chk-all";
-    const lblAll = document.createElement("label");
-    lblAll.htmlFor = "ta-chk-all";
-    lblAll.appendChild(chkAll);
-    lblAll.appendChild(document.createTextNode(" Select all"));
-
-    const loadTsBtn = document.createElement("button");
-    loadTsBtn.className = "mw-ui-button mw-ui-quiet";
-    loadTsBtn.style.fontSize = "0.85em";
-    loadTsBtn.textContent = "🕐 Load timestamps";
-
-    const filterWrap = document.createElement("div");
-    filterWrap.className = "ta-filter-age";
-    filterWrap.innerHTML = `<span>Filter:</span>
-            <select id="ta-filter-sel">
-                <option value="0">All threads</option>
-                <option value="7">Older than 7 days</option>
-                <option value="14">Older than 14 days</option>
-                <option value="21">Older than 21 days</option>
-                <option value="30">Older than 30 days</option>
-                <option value="60">Older than 60 days</option>
-                <option value="90">Older than 90 days</option>
-                <option value="180">Older than 180 days</option>
-            </select>`;
-
-    toolbar.appendChild(lblAll);
-    toolbar.appendChild(loadTsBtn);
-    toolbar.appendChild(filterWrap);
-    body.appendChild(toolbar);
-
-    const tableWrap = document.createElement("div");
-    const table = document.createElement("table");
-    table.className = "ta-thread-table";
-    table.innerHTML = `<thead>
-            <tr>
-                <th class="ta-td-check"></th>
-                <th class="ta-td-title">Thread title</th>
-                <th class="ta-td-ts">Last active</th>
-                <th class="ta-td-year" title="Target archive year — can be changed manually">Year</th>
-                <th class="ta-td-dest">Archive destination</th>
-                <th class="ta-td-status">Status</th>
-            </tr>
-        </thead>`;
-    const tbody = document.createElement("tbody");
-    table.appendChild(tbody);
-    tableWrap.appendChild(table);
-    body.appendChild(tableWrap);
-
-    const footerInfo = document.createElement("div");
-    footerInfo.className = "ta-footer-info";
-    footerInfo.id = "ta-footer-info";
-    footerInfo.textContent = "0 threads selected";
-
-    const footerRight = document.createElement("div");
-    footerRight.className = "ta-dialog-footer-right";
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "mw-ui-button mw-ui-quiet";
-    cancelBtn.textContent = "Close";
-    cancelBtn.addEventListener("click", () => overlay.closeHandler());
-    const archiveBtn = document.createElement("button");
-    archiveBtn.className = "mw-ui-button mw-ui-progressive";
-    archiveBtn.textContent = "Archive selected";
-    archiveBtn.disabled = true;
-
-    footerRight.appendChild(cancelBtn);
-    footerRight.appendChild(archiveBtn);
-    footer.appendChild(footerInfo);
-    footer.appendChild(footerRight);
-
-    function getVisibleItems() {
-      if (filterDays === 0) return items;
-      const cutoff = Date.now() - filterDays * 864e5;
-      return items.filter(
-        (it) => !it.tsLoaded || (it.ts && it.ts.getTime() < cutoff),
+      ArchiveUIManager.generateButton(
+        "Close",
+        "mw-ui-quiet",
+        () => overlay.closeHandler(),
+        rightContainer,
       );
     }
 
-    function renderBadge(status) {
-      const map = {
-        pending: ["ta-badge-pending", "—"],
-        loading: ["ta-badge-loading", "⏳"],
-        ok: ["ta-badge-ok", "✅ Done"],
-        error: ["ta-badge-error", "❌ Failed"],
-        skipped: ["ta-badge-skipped", "Skipped"],
-      };
-      const [cls, txt] = map[status] || map.pending;
-      return `<span class="ta-badge ${cls}">${txt}</span>`;
+    openBulkArchivePanel() {
+      const currentYear = new Date().getUTCFullYear();
+      this.internalState = this.threads.map((thread, relativeIdx) => ({
+        id: relativeIdx,
+        thread: thread,
+        timestamp: null,
+        tsLoaded: false,
+        year: currentYear,
+        archiveTitle: this.getArchiveDestinationPath(currentYear),
+        status: "pending",
+        selected: false,
+        yearOverride: false,
+      }));
+
+      this.filterDays = 0;
+
+      const { body, footer } = this.uiManager.instantiateDialog({
+        title: "Kiroku Hokan-ki — Bulk archive manager",
+        icon: "📜",
+      });
+
+      const interfaceWrapper = document.createElement("div");
+      interfaceWrapper.innerHTML = `
+                <div class="ta-toolbar">
+                    <label for="ta-chk-all"><input type="checkbox" id="ta-chk-all"> Select all</label>
+                    <button class="mw-ui-button mw-ui-quiet" id="ta-load-ts-btn" style="font-size:0.85em;">🔄 Scan timestamps</button>
+                    <div class="ta-filter-age">
+                        <span>Filter:</span>
+                        <select id="ta-filter-sel">
+                            <option value="0">All discussions</option>
+                            <option value="7">Older than 7 days</option>
+                            <option value="14">Older than 14 days</option>
+                            <option value="30">Older than 30 days</option>
+                            <option value="90">Older than 90 days</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="ta-thread-table">
+                        <thead>
+                            <tr>
+                                <th class="ta-td-check"></th>
+                                <th>Discussion topic</th>
+                                <th class="ta-td-ts">Last active</th>
+                                <th class="ta-td-year">Archive year</th>
+                                <th>Archive path</th>
+                                <th class="ta-td-status">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ta-tbody"></tbody>
+                    </table>
+                </div>`;
+
+      body.appendChild(interfaceWrapper);
+
+      const tbody = interfaceWrapper.querySelector("#ta-tbody");
+      const selectAllCheck = interfaceWrapper.querySelector("#ta-chk-all");
+      const fetchTimestampsBtn =
+        interfaceWrapper.querySelector("#ta-load-ts-btn");
+      const filterDropdown = interfaceWrapper.querySelector("#ta-filter-sel");
+
+      const quantitativeFooterInfo = document.createElement("div");
+      quantitativeFooterInfo.id = "ta-footer-info";
+      quantitativeFooterInfo.className = "ta-footer-info";
+
+      const operationalFooterRight = document.createElement("div");
+      operationalFooterRight.className = "ta-dialog-footer-right";
+
+      const submitBatchBtn = ArchiveUIManager.generateButton(
+        "Archive selected with Kiroku Hokan-ki",
+        "mw-ui-progressive",
+        () => this.triggerBatchExecutionFlow(tbody),
+        operationalFooterRight,
+      );
+      submitBatchBtn.disabled = true;
+
+      footer.append(quantitativeFooterInfo, operationalFooterRight);
+
+      tbody.addEventListener("change", (event) => {
+        const historicalRow = event.target.closest("tr");
+        if (!historicalRow) return;
+
+        const itemIndex = parseInt(historicalRow.dataset.indexId, 10);
+        const localStateItem = this.internalState.find(
+          (i) => i.id === itemIndex,
+        );
+        if (!localStateItem) return;
+
+        if (event.target.classList.contains("ta-row-chk")) {
+          localStateItem.selected = event.target.checked;
+          historicalRow.classList.toggle(
+            "ta-selected",
+            localStateItem.selected,
+          );
+          this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
+        }
+
+        if (event.target.classList.contains("ta-row-year")) {
+          const parsedYear = parseInt(event.target.value, 10);
+          localStateItem.year = parsedYear;
+          localStateItem.yearOverride = true;
+          localStateItem.archiveTitle =
+            this.getArchiveDestinationPath(parsedYear);
+
+          historicalRow.querySelector(".ta-row-dest").textContent =
+            localStateItem.archiveTitle;
+          event.target.className = "ta-year-sel ta-year-override";
+        }
+      });
+
+      selectAllCheck.addEventListener("change", (event) => {
+        const targetState = event.target.checked;
+        const activeSet = this.computeFilteredDataSubset();
+        activeSet.forEach((item) => {
+          item.selected = targetState;
+        });
+        this.renderOptimisedTableRows(tbody);
+        this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
+      });
+
+      filterDropdown.addEventListener("change", (event) => {
+        this.filterDays = parseInt(event.target.value, 10);
+        this.renderOptimisedTableRows(tbody);
+        this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
+      });
+
+      fetchTimestampsBtn.addEventListener("click", async () => {
+        fetchTimestampsBtn.disabled = true;
+        fetchTimestampsBtn.textContent = "⏳ Scanning...";
+
+        const activeSet = this.computeFilteredDataSubset();
+        const sharedMonthsMap = this.localeEngine.getMonthMap();
+
+        for (const rowItem of activeSet) {
+          if (rowItem.tsLoaded) continue;
+          rowItem.status = "loading";
+          this.updateRowUIStatus(tbody, rowItem.id);
+
+          const signatureDate = WikitextParser.computeThreadActivityDate(
+            rowItem.thread.content,
+            sharedMonthsMap,
+          );
+          rowItem.timestamp = signatureDate;
+          rowItem.tsLoaded = true;
+
+          if (!rowItem.yearOverride && signatureDate) {
+            rowItem.year = signatureDate.getUTCFullYear();
+            rowItem.archiveTitle = this.getArchiveDestinationPath(rowItem.year);
+          }
+          rowItem.status = "pending";
+          this.updateRowUIStatus(tbody, rowItem.id);
+        }
+
+        fetchTimestampsBtn.disabled = false;
+        fetchTimestampsBtn.textContent = "🔄 Rescan timestamps";
+        this.renderOptimisedTableRows(tbody);
+      });
+
+      this.renderOptimisedTableRows(tbody);
+      this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
     }
 
-    function updateFooterCount() {
-      const n = items.filter((it) => it.selected).length;
-      const el = document.getElementById("ta-footer-info");
-      if (el) el.textContent = `${n} thread${n !== 1 ? "s" : ""} selected`;
-      archiveBtn.disabled = n === 0;
+    computeFilteredDataSubset() {
+      if (this.filterDays === 0) return this.internalState;
+      const maximumHorizonThreshold = Date.now() - this.filterDays * 86400000;
+      return this.internalState.filter((item) => {
+        return (
+          !item.tsLoaded ||
+          (item.timestamp && item.timestamp.getTime() < maximumHorizonThreshold)
+        );
+      });
     }
 
-    function renderTable() {
-      tbody.innerHTML = "";
-      const visible = getVisibleItems();
-      if (!visible.length) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="6" style="text-align:center;padding:18px;color:#72777d">No threads match the current filter.</td>`;
-        tbody.appendChild(tr);
+    optimiseFooterCounters(buttonRef, informationRef) {
+      const countedSelections = this.internalState.filter(
+        (i) => i.selected,
+      ).length;
+      informationRef.textContent = `${countedSelections} discussion${countedSelections !== 1 ? "s" : ""} selected for processing`;
+      buttonRef.disabled = countedSelections === 0;
+    }
+
+    renderOptimisedTableRows(tbodyElement) {
+      tbodyElement.innerHTML = "";
+      const currentSubset = this.computeFilteredDataSubset();
+
+      if (!currentSubset.length) {
+        tbodyElement.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:18px;color:#72777d">No discussions match the selected filters.</td></tr>`;
         return;
       }
-      visible.forEach((item, vi) => {
+
+      const currentYearSystem = new Date().getUTCFullYear();
+      let optionDropdownBuffer = "";
+      for (
+        let yearIdx = currentYearSystem + 1;
+        yearIdx >= currentYearSystem - 15;
+        yearIdx--
+      ) {
+        optionDropdownBuffer += `<option value="${yearIdx}">${yearIdx}</option>`;
+      }
+
+      currentSubset.forEach((item) => {
         const tr = document.createElement("tr");
-        if (item.selected) tr.classList.add("ta-selected");
+        tr.dataset.indexId = item.id;
+        if (item.selected) tr.className = "ta-selected";
 
-        const tsText = item.tsLoaded
-          ? item.ts
-            ? item.ts.toISOString().slice(0, 10)
-            : "Not detected"
-          : '<span style="color:#a2a9b1">Not loaded</span>';
+        let isoDateDisplay = `<span style="color:#a2a9b1">Not scanned</span>`;
+        if (item.tsLoaded) {
+          if (item.timestamp) {
+            const relativeTimeStr = WikitextParser.getRelativeTimeAgo(
+              item.timestamp,
+            );
+            isoDateDisplay = `${item.timestamp.toISOString().slice(0, 10)} (${relativeTimeStr})`;
+          } else {
+            isoDateDisplay = "Not found";
+          }
+        }
 
-        const detectedYear = item.ts
-          ? item.ts.getUTCFullYear()
-          : new Date().getUTCFullYear();
-        const isOverride =
-          item.yearOverride && item.yearOverride !== detectedYear;
-        const yearSelCls = isOverride
-          ? "ta-year-sel ta-year-override"
-          : "ta-year-sel";
-        const displayTitle = mw.html.escape(item.thread.titleClean);
+        const calculatedBadge = this.generateBadgeMarkup(item.status);
 
         tr.innerHTML = `
-                    <td class="ta-td-check"><input type="checkbox" class="ta-row-chk" data-vi="${vi}" ${item.selected ? "checked" : ""}></td>
-                    <td class="ta-td-title">${displayTitle}</td>
-                    <td class="ta-td-ts">${tsText}</td>
-                    <td class="ta-td-year"><select class="${yearSelCls} ta-row-year" title="Override archive year">${buildYearOptions(item.year)}</select></td>
+                    <td class="ta-td-check"><input type="checkbox" class="ta-row-chk" ${item.selected ? "checked" : ""}></td>
+                    <td class="ta-td-title"><b>${mw.html.escape(item.thread.titleClean)}</b></td>
+                    <td class="ta-td-ts">${isoDateDisplay}</td>
+                    <td class="ta-td-year">
+                        <select class="ta-row-year ${item.yearOverride ? "ta-year-sel ta-year-override" : "ta-year-sel"}">
+                            ${optionDropdownBuffer}
+                        </select>
+                    </td>
                     <td class="ta-td-dest ta-row-dest">${mw.html.escape(item.archiveTitle)}</td>
-                    <td class="ta-td-status">${renderBadge(item.status)}</td>`;
+                    <td class="ta-td-status status-container">${calculatedBadge}</td>`;
 
-        tr.querySelector(".ta-row-chk").addEventListener("change", (e) => {
-          item.selected = e.target.checked;
-          tr.classList.toggle("ta-selected", item.selected);
-          updateFooterCount();
-          const vis = getVisibleItems();
-          chkAll.checked = vis.length > 0 && vis.every((it) => it.selected);
-          chkAll.indeterminate =
-            vis.some((it) => it.selected) && !vis.every((it) => it.selected);
-        });
-
-        tr.querySelector(".ta-row-year").addEventListener("change", (e) => {
-          const newYear = parseInt(e.target.value, 10);
-          item.year = newYear;
-          item.archiveTitle = getArchiveTitle(newYear);
-          item.yearOverride = newYear;
-          tr.querySelector(".ta-row-dest").textContent = item.archiveTitle;
-          const sel = e.target;
-          const det = item.ts
-            ? item.ts.getUTCFullYear()
-            : new Date().getUTCFullYear();
-          sel.className =
-            newYear !== det
-              ? "ta-year-sel ta-year-override ta-row-year"
-              : "ta-year-sel ta-row-year";
-        });
-
-        tbody.appendChild(tr);
+        tr.querySelector(".ta-row-year").value = item.year;
+        tbodyElement.appendChild(tr);
       });
-      updateFooterCount();
     }
 
-    chkAll.addEventListener("change", () => {
-      const vis = getVisibleItems();
-      vis.forEach((it) => {
-        it.selected = chkAll.checked;
-      });
-      renderTable();
-    });
-
-    setTimeout(() => {
-      const sel = document.getElementById("ta-filter-sel");
-      if (sel)
-        sel.addEventListener("change", (e) => {
-          filterDays = parseInt(e.target.value, 10);
-          chkAll.checked = false;
-          renderTable();
-        });
-    }, 0);
-
-    loadTsBtn.addEventListener("click", async () => {
-      loadTsBtn.disabled = true;
-      loadTsBtn.textContent = "⏳ Loading…";
-      for (let i = 0; i < items.length; i++) {
-        items[i].status = "loading";
-        renderTable();
-        const ts = await getThreadLastTimestamp(items[i].thread.content);
-        items[i].ts = ts;
-        items[i].tsLoaded = true;
-        if (!items[i].yearOverride) {
-          items[i].year = ts
-            ? ts.getUTCFullYear()
-            : new Date().getUTCFullYear();
-          items[i].archiveTitle = getArchiveTitle(items[i].year);
-        }
-        items[i].status = "pending";
-        renderTable();
-      }
-      loadTsBtn.disabled = false;
-      loadTsBtn.textContent = "🔄 Refresh timestamps";
-    });
-
-    archiveBtn.addEventListener("click", () => {
-      const selected = items.filter((it) => it.selected);
-      if (!selected.length) return;
-      openBulkConfirm(
-        selected,
-        items,
-        overlay,
-        renderTable,
-        updateFooterCount,
-        archiveBtn,
-        cancelBtn,
+    updateRowUIStatus(tbodyElement, targetItemId) {
+      const rowNode = tbodyElement.querySelector(
+        `tr[data-index-id="${targetItemId}"]`,
       );
-    });
+      if (!rowNode) return;
+      const targetItem = this.internalState.find((i) => i.id === targetItemId);
+      if (!targetItem) return;
 
-    renderTable();
-  }
-
-  // ============================================================================
-  // [SECTION 14] BULK CONFIRM DIALOG
-  // Prompts user for batch verification and triggers execution status logging.
-  // ============================================================================
-  function openBulkConfirm(
-    selected,
-    allItems,
-    managerOverlay,
-    renderTable,
-    updateFooterCount,
-    archiveBtn,
-    cancelBtnOuter,
-  ) {
-    const { overlay, body, footer } = createDialog({
-      title: `Confirm archiving ${selected.length} thread${selected.length !== 1 ? "s" : ""}`,
-      icon: "📜",
-      small: true,
-    });
-
-    const bodyPad = document.createElement("div");
-    bodyPad.className = "ta-dialog-body-pad";
-    bodyPad.innerHTML = `<p style="margin:0 0 6px">The following threads will be archived:</p>`;
-
-    const ul = document.createElement("ul");
-    ul.className = "ta-confirm-list";
-    selected.forEach((item) => {
-      const li = document.createElement("li");
-      li.innerHTML = `<b>${mw.html.escape(item.thread.titleClean)}</b>
-                <div class="ta-dest">→ ${mw.html.escape(item.archiveTitle)}</div>`;
-      ul.appendChild(li);
-    });
-    bodyPad.appendChild(ul);
-
-    const progressLog = document.createElement("div");
-    progressLog.className = "ta-progress-log";
-    progressLog.id = "ta-bulk-progress";
-    bodyPad.appendChild(progressLog);
-    body.appendChild(bodyPad);
-
-    const footerRight2 = document.createElement("div");
-    footerRight2.className = "ta-dialog-footer-right";
-    footer.appendChild(footerRight2);
-
-    const c2 = addFooterBtn(footerRight2, "Cancel", "mw-ui-quiet", () =>
-      overlay.closeHandler(),
-    );
-
-    const confirmBtn = addFooterBtn(
-      footerRight2,
-      "Archive now",
-      "mw-ui-progressive",
-      async () => {
-        confirmBtn.disabled = true;
-        c2.disabled = true;
-        archiveBtn.disabled = true;
-        cancelBtnOuter.disabled = true;
-        const progEl = document.getElementById("ta-bulk-progress");
-
-        selected.forEach((it) => {
-          it.status = "loading";
-        });
-        renderTable();
-
-        let batchResult;
-        try {
-          batchResult = await archiveBatch(
-            selected.map((it) => ({
-              thread: it.thread,
-              archiveTitle: it.archiveTitle,
-            })),
-            (msg) => {
-              if (progEl) progEl.textContent = `⏳ ${msg}`;
-            },
-          );
-        } catch (fatalErr) {
-          console.error(
-            "[Kiroku Hokan-ki:Rachmat04] fatal batch error",
-            fatalErr,
-          );
-          batchResult = {
-            ok: [],
-            errors: selected.map((it) => ({
-              title: it.thread.title,
-              err: fatalErr,
-            })),
-          };
-        }
-
-        const okSet = new Set(batchResult.ok);
-        selected.forEach((it) => {
-          it.status = okSet.has(it.thread.title) ? "ok" : "error";
-          it.selected = false;
-        });
-        renderTable();
-        updateFooterCount();
-
-        const doneCount = batchResult.ok.length;
-        const errorCount = batchResult.errors.length;
-        if (progEl)
-          progEl.innerHTML =
-            `<b>Done.</b> ${doneCount} succeeded, ${errorCount} failed.` +
-            (errorCount ? " Check the browser console for details." : "");
-
-        footerRight2.innerHTML = "";
-        addFooterBtn(
-          footerRight2,
-          "Close & reload",
-          "mw-ui-progressive",
-          () => {
-            overlay.closeHandler();
-            managerOverlay.closeHandler();
-            location.reload();
-          },
-        );
-        if (errorCount > 0) {
-          addFooterBtn(
-            footerRight2,
-            "Close without reload",
-            "mw-ui-quiet",
-            () => {
-              overlay.closeHandler();
-              cancelBtnOuter.disabled = false;
-              archiveBtn.disabled =
-                selected.filter((it) => it.selected).length === 0;
-            },
-          );
-        }
-      },
-    );
-  }
-
-  // ============================================================================
-  // [SECTION 15] SINGLE-THREAD ARCHIVE DIALOG
-  // Handles the interface and functionality for archiving individual sections.
-  // ============================================================================
-  async function onArchiveBtnClick(thread, btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="ta-btn-spinner"></span>';
-
-    const { overlay, body, footer } = createDialog({
-      title: "Archive section",
-      icon: "📜",
-      small: true,
-      onClose: () => {
-        btn.disabled = false;
-        btn.textContent = "📜";
-      },
-    });
-
-    const bodyPad = document.createElement("div");
-    bodyPad.className = "ta-dialog-body-pad";
-    bodyPad.innerHTML = `
-            <div style="font-weight:700;margin-bottom:6px">${mw.html.escape(thread.titleClean)}</div>
-            <div class="ta-progress-log" id="ta-prog">⏳ Detecting timestamp…</div>`;
-    body.appendChild(bodyPad);
-
-    let timestamp = null;
-    try {
-      timestamp = await getThreadLastTimestamp(thread.content);
-    } catch (e) {}
-
-    const detectedYear = timestamp
-      ? timestamp.getUTCFullYear()
-      : new Date().getUTCFullYear();
-    let activeYear = detectedYear;
-    const tsDisplay = timestamp
-      ? timestamp.toISOString().slice(0, 10)
-      : "Not detected";
-
-    function renderSingleBody() {
-      const curArchiveTitle = getArchiveTitle(activeYear);
-      const isOverride = activeYear !== detectedYear;
-      bodyPad.innerHTML = `
-                <div style="font-weight:700;margin-bottom:8px">${mw.html.escape(thread.titleClean)}</div>
-                <div>Last active: <b>${mw.html.escape(tsDisplay)}</b>
-                    ${!timestamp ? '<span style="color:#b00"> (not detected)</span>' : ""}
-                </div>
-                <div class="ta-year-row">
-                    <label for="ta-single-year">Archive year:</label>
-                    <select id="ta-single-year" class="${isOverride ? "ta-year-override" : ""}">
-                        ${buildYearOptions(activeYear)}
-                    </select>
-                    ${isOverride ? `<span style="font-size:0.82em;color:#d4730a">✏️ Manually overridden</span>` : `<span style="font-size:0.82em;color:#72777d">Auto-detected from timestamp</span>`}
-                </div>
-                <div class="ta-dest-preview">→ ${mw.html.escape(curArchiveTitle)}</div>
-                ${!timestamp ? '<div style="margin-top:8px;color:#d4730a">⚠️ Timestamp not detected. Verify the year before continuing.</div>' : ""}
-                <div class="ta-progress-log" id="ta-prog2"></div>`;
-
-      bodyPad
-        .querySelector("#ta-single-year")
-        .addEventListener("change", (e) => {
-          activeYear = parseInt(e.target.value, 10);
-          renderSingleBody();
-          attachConfirm();
-        });
+      rowNode.querySelector(".status-container").innerHTML =
+        this.generateBadgeMarkup(targetItem.status);
     }
-    renderSingleBody();
 
-    const footerRight = document.createElement("div");
-    footerRight.className = "ta-dialog-footer-right";
-    footer.appendChild(footerRight);
-    addFooterBtn(footerRight, "Cancel", "mw-ui-quiet", () =>
-      overlay.closeHandler(),
-    );
+    generateBadgeMarkup(status) {
+      const badgeConfigurationMatrix = {
+        pending: ["ta-badge-pending", "—"],
+        loading: ["ta-badge-loading", "⏳ Scanning..."],
+        ok: ["ta-badge-ok", "✅ Archived"],
+        error: ["ta-badge-error", "❌ Error"],
+        skipped: ["ta-badge-skipped", "Skipped"],
+      };
+      const [stylingClass, labelText] =
+        badgeConfigurationMatrix[status] || badgeConfigurationMatrix.pending;
+      return `<span class="ta-badge ${stylingClass}">${labelText}</span>`;
+    }
 
-    let confirmBtn;
+    async triggerBatchExecutionFlow(tbodyElement) {
+      const elementsSelectedForArchiving = this.internalState.filter(
+        (i) => i.selected,
+      );
+      if (!elementsSelectedForArchiving.length) return;
 
-    function attachConfirm() {
-      if (confirmBtn) confirmBtn.remove();
-      confirmBtn = addFooterBtn(
-        footerRight,
-        "Archive",
+      const { overlay, body, footer } = this.uiManager.instantiateDialog({
+        title: "Kiroku Hokan-ki — Confirm archiving",
+        icon: "📜",
+        small: true,
+      });
+
+      const logPad = document.createElement("div");
+      logPad.className = "ta-dialog-body-pad";
+      logPad.innerHTML = `<p style='margin:0 0 6px'>The following discussions will be moved to your archives:</p>
+                                <ul class='ta-confirm-list' id='ta-confirmation-list-summary'></ul>
+                                <div class='ta-progress-log' id='ta-batch-progress-log-terminal'></div>`;
+      body.appendChild(logPad);
+
+      const summaryList = logPad.querySelector("#ta-confirmation-list-summary");
+      const terminalLog = logPad.querySelector(
+        "#ta-batch-progress-log-terminal",
+      );
+
+      elementsSelectedForArchiving.forEach((item) => {
+        const nodeItem = document.createElement("li");
+        nodeItem.innerHTML = `<b>${mw.html.escape(item.thread.titleClean)}</b> <div class='ta-dest'>→ ${mw.html.escape(item.archiveTitle)}</div>`;
+        summaryList.appendChild(nodeItem);
+      });
+
+      const functionalFooterRight = document.createElement("div");
+      functionalFooterRight.className = "ta-dialog-footer-right";
+      footer.appendChild(functionalFooterRight);
+
+      const cancelBtn = ArchiveUIManager.generateButton(
+        "Cancel",
+        "mw-ui-quiet",
+        () => overlay.closeHandler(),
+        functionalFooterRight,
+      );
+      const confirmBtn = ArchiveUIManager.generateButton(
+        "Confirm archive",
         "mw-ui-progressive",
         async () => {
           confirmBtn.disabled = true;
-          const prog2 = bodyPad.querySelector("#ta-prog2");
-          if (prog2) prog2.textContent = "⏳ Archiving…";
-          const finalArchiveTitle = getArchiveTitle(activeYear);
+          cancelBtn.disabled = true;
+
+          terminalLog.textContent = "Starting process...";
+
+          const mappingBatches = new Map();
+          elementsSelectedForArchiving.forEach((item) => {
+            if (!mappingBatches.has(item.archiveTitle))
+              mappingBatches.set(item.archiveTitle, []);
+            mappingBatches.get(item.archiveTitle).push(item);
+          });
+
           try {
-            await archiveThread(thread, finalArchiveTitle);
-            bodyPad.innerHTML = `<div>✅ Section <b>${mw.html.escape(thread.titleClean)}</b> archived successfully.</div>
-                        <div class="ta-dest-preview" style="margin-top:6px">→ <a href="${mw.util.getUrl(finalArchiveTitle)}" target="_blank">${mw.html.escape(finalArchiveTitle)}</a></div>`;
-            footerRight.innerHTML = "";
-            addFooterBtn(
-              footerRight,
-              "Close & reload",
-              "mw-ui-progressive",
-              () => {
-                overlay.closeHandler();
-                location.reload();
-              },
+            const actualSourcePayload =
+              await this.apiService.getPageSourceData();
+            let globalWikitextBuffer = actualSourcePayload.text;
+            const operationalBaseTimestamp = actualSourcePayload.baseTimestamp;
+
+            const processingLogsSuccessful = [];
+
+            for (const [archiveSubpagePath, itemsArray] of mappingBatches) {
+              terminalLog.textContent = `Saving discussions to ${archiveSubpagePath}...`;
+
+              const mergedWikitextPayload = itemsArray
+                .map((i) => i.thread.content.trim())
+                .join("\n\n");
+              const targetSummaryDescription = `Archiving discussions to subpage (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
+
+              await this.apiService.saveToArchiveTarget(
+                archiveSubpagePath,
+                mergedWikitextPayload,
+                targetSummaryDescription,
+              );
+              itemsArray.forEach((i) => {
+                i.status = "ok";
+                processingLogsSuccessful.push(i.thread);
+              });
+            }
+
+            terminalLog.textContent = "Removing discussions from talk page...";
+            processingLogsSuccessful.sort(
+              (alpha, beta) => beta.start - alpha.start,
             );
-          } catch (e) {
-            console.error("[Kiroku Hokan-ki:Rachmat04]", e);
-            const p2 = bodyPad.querySelector("#ta-prog2");
-            if (p2) p2.textContent = "❌ Failed. Check the browser console.";
-            confirmBtn.disabled = false;
+            processingLogsSuccessful.forEach((threadItem) => {
+              globalWikitextBuffer =
+                globalWikitextBuffer.substring(0, threadItem.start) +
+                globalWikitextBuffer.substring(threadItem.end);
+            });
+
+            await this.apiService.updateTalkSourcePage(
+              globalWikitextBuffer.trim(),
+              `Removing archived discussions (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
+              operationalBaseTimestamp,
+            );
+
+            terminalLog.textContent = "Archiving completed successfully!";
+            this.renderOptimisedTableRows(tbodyElement);
+            setTimeout(() => {
+              overlay.closeHandler();
+              window.location.reload();
+            }, 1200);
+          } catch (failureTransactionError) {
+            console.error(
+              "[KirokuHokanki] Error inside batch execution flow:",
+              failureTransactionError,
+            );
+            terminalLog.innerHTML = `<span style='color:#b00;'>An error occurred. Please check the browser console for details.</span>`;
+            elementsSelectedForArchiving.forEach((i) => {
+              i.status = "error";
+            });
+            this.renderOptimisedTableRows(tbodyElement);
+            cancelBtn.disabled = false;
           }
         },
+        functionalFooterRight,
       );
     }
-    attachConfirm();
+
+    async openSingleArchivePanel(threadItem, nativeButtonElement) {
+      nativeButtonElement.disabled = true;
+      nativeButtonElement.innerHTML = `<span class="ta-btn-spinner"></span>`;
+
+      const { overlay, body, footer } = this.uiManager.instantiateDialog({
+        title: "Kiroku Hokan-ki — Archive section",
+        icon: "📜",
+        small: true,
+        onClose: () => {
+          nativeButtonElement.disabled = false;
+          nativeButtonElement.textContent = "📜";
+        },
+      });
+
+      const pad = document.createElement("div");
+      pad.className = "ta-dialog-body-pad";
+      pad.innerHTML = `<h3>${mw.html.escape(threadItem.titleClean)}</h3><div id='ta-single-workzone'>⏳ Reading dates...</div>`;
+      body.appendChild(pad);
+
+      const workzone = pad.querySelector("#ta-single-workzone");
+
+      try {
+        const sharedMonthsMap = this.localeEngine.getMonthMap();
+        const activityDateResolved = WikitextParser.computeThreadActivityDate(
+          threadItem.content,
+          sharedMonthsMap,
+        );
+        const resolvedYear = activityDateResolved
+          ? activityDateResolved.getUTCFullYear()
+          : new Date().getUTCFullYear();
+
+        let systemSelectedYear = resolvedYear;
+        const relativeTimeStr = activityDateResolved
+          ? ` (${WikitextParser.getRelativeTimeAgo(activityDateResolved)})`
+          : "";
+        const isoDateString = activityDateResolved
+          ? `${activityDateResolved.toISOString().slice(0, 10)}${relativeTimeStr}`
+          : "No signature found";
+
+        const localRenderRoutine = () => {
+          const destinationPathString =
+            this.getArchiveDestinationPath(systemSelectedYear);
+          workzone.innerHTML = `
+                        <p>Last active signature: <b>${mw.html.escape(isoDateString)}</b></p>
+                        <div class="ta-year-row">
+                            <label for="ta-single-year-select">Archive year:</label>
+                            <select id="ta-single-year-select" class="ta-year-sel"></select>
+                        </div>
+                        <div class="ta-dest-preview">Archive path: <b>${mw.html.escape(destinationPathString)}</b></div>
+                        <div class="ta-progress-log" id="ta-single-execution-terminal-log"></div>`;
+
+          const innerSelect = workzone.querySelector("#ta-single-year-select");
+          const currentYearSystem = new Date().getUTCFullYear();
+          for (
+            let yIdx = currentYearSystem + 1;
+            yIdx >= currentYearSystem - 15;
+            yIdx--
+          ) {
+            const opt = document.createElement("option");
+            opt.value = yIdx;
+            opt.textContent = yIdx;
+            if (yIdx === systemSelectedYear) opt.selected = true;
+            innerSelect.appendChild(opt);
+          }
+
+          innerSelect.addEventListener("change", (e) => {
+            systemSelectedYear = parseInt(e.target.value, 10);
+            localRenderRoutine();
+          });
+        };
+
+        localRenderRoutine();
+
+        const UIControlsFooterRight = document.createElement("div");
+        UIControlsFooterRight.className = "ta-dialog-footer-right";
+        footer.appendChild(UIControlsFooterRight);
+
+        const singleCancelBtn = ArchiveUIManager.generateButton(
+          "Cancel",
+          "mw-ui-quiet",
+          () => overlay.closeHandler(),
+          UIControlsFooterRight,
+        );
+        const singleConfirmBtn = ArchiveUIManager.generateButton(
+          "Archive with Kiroku Hokan-ki",
+          "mw-ui-progressive",
+          async () => {
+            singleConfirmBtn.disabled = true;
+            singleCancelBtn.disabled = true;
+
+            const singleTerminalNode = workzone.querySelector(
+              "#ta-single-execution-terminal-log",
+            );
+            singleTerminalNode.textContent = "Saving section to archive...";
+
+            try {
+              const pageSourcePayload =
+                await this.apiService.getPageSourceData();
+              let sourceWikitext = pageSourcePayload.text;
+              const currentBaseTimestamp = pageSourcePayload.baseTimestamp;
+
+              const destinationArchivePage =
+                this.getArchiveDestinationPath(systemSelectedYear);
+              const modificationSummary = `Archiving section: ${threadItem.titleClean} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
+
+              await this.apiService.saveToArchiveTarget(
+                destinationArchivePage,
+                threadItem.content,
+                modificationSummary,
+              );
+
+              singleTerminalNode.textContent =
+                "Removing section from talk page...";
+              sourceWikitext =
+                sourceWikitext.substring(0, threadItem.start) +
+                sourceWikitext.substring(threadItem.end);
+
+              await this.apiService.updateTalkSourcePage(
+                sourceWikitext.trim(),
+                `Removing archived section: ${threadItem.titleClean} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
+                currentBaseTimestamp,
+              );
+
+              singleTerminalNode.textContent = "Section archived successfully!";
+              setTimeout(() => {
+                overlay.closeHandler();
+                window.location.reload();
+              }, 1000);
+            } catch (err) {
+              console.error(
+                "[KirokuHokanki] Section archive error state encountered:",
+                err,
+              );
+              singleTerminalNode.innerHTML = `<span style='color:#b00;'>Archiving failed. Please check the browser console.</span>`;
+              singleCancelBtn.disabled = false;
+            }
+          },
+          UIControlsFooterRight,
+        );
+      } catch (parsingFailure) {
+        workzone.textContent = "Could not parse this section.";
+        console.error(parsingFailure);
+      }
+    }
   }
 
   // ============================================================================
-  // [SECTION 16] BUTTON INJECTION
-  // Hooks into the DOM to add per-heading archive buttons and the bulk manager link.
+  // [BOOTSTRAP LAYER]
   // ============================================================================
-  async function injectButtons() {
-    let wikitext;
-    try {
-      const res = await api.get({
-        action: "query",
-        prop: "revisions",
-        rvprop: "content",
-        titles: PAGE_NAME,
-        formatversion: 2,
-      });
-      wikitext = res.query.pages[0].revisions[0].content;
-    } catch (e) {
-      return;
-    }
-    if (!wikitext) return;
-
-    const threads = parseThreads(wikitext);
-
-    if (!document.getElementById("ca-kiroku-hokanki")) {
-      const portletLabel = threads.length
-        ? `📜 Kiroku Hōkan-ki (${threads.length})`
-        : "📜 Kiroku Hōkan-ki";
-
-      $(
-        mw.util.addPortletLink(
-          "p-cactions",
-          "#",
-          portletLabel,
-          "ca-kiroku-hokanki",
-          "Open Kiroku Hōkan-ki archive manager",
-        ),
-      ).on("click", function (e) {
-        e.preventDefault();
-        if (!threads.length) openEmptyNotice();
-        else openArchiveManager(threads);
-      });
-    }
-
-    if (!threads.length) return;
-
-    const headings = Array.from(
-      document.querySelectorAll("#mw-content-text h2"),
-    );
-    headings.forEach((heading, i) => {
-      const thread = threads[i];
-      if (!thread || heading.querySelector(".ta-btn")) return;
-
-      const btn = document.createElement("button");
-      btn.className = "ta-btn";
-      btn.textContent = "📜";
-      btn.title = "Archive this section";
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        onArchiveBtnClick(thread, btn);
-      });
-
-      const editLink = heading.querySelector(".mw-editsection");
-      if (editLink) heading.insertBefore(btn, editLink);
-      else heading.appendChild(btn);
+  mw.loader.using(["mediawiki.api", "mediawiki.util"]).then(function () {
+    $(function () {
+      const app = new GadgetController();
+      app.initialise();
     });
-  }
-
-  // ============================================================================
-  // [SECTION 17] ENTRY POINT
-  // Initializes DOM execution sequences upon document ready state.
-  // ============================================================================
-  $(injectButtons);
+  });
 })();
 // </nowiki>
