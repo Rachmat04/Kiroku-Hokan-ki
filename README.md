@@ -1,6 +1,6 @@
 # Kiroku Hōkan-ki — 記録保管機  
 
-**Type:** Semi-automated talk page archiving gadget
+**Type:** Semi-automated talk page archiving gadget  
 **Language:** JavaScript (User script)
 
 ---
