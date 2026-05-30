@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 2.5.0
+ * Version 2.5.2
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -13,6 +13,17 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
+ *
+ * CHANGELOG v2.5.2:
+ * - Changed: Refined dialogue and toolbar button styles to strictly align with the
+ *   Tengu UI design system, adopting 'tng-btn' base and variant classes
+ *   (tng-btn-primary, tng-btn-quiet, tng-btn-destructive) for full visual and
+ *   naming consistency. Introduced 'tng-btn-inline' for specific smaller buttons.
+ *
+ * CHANGELOG v2.5.1:
+ * - Changed: Adapted dialogue and toolbar buttons to use the Tengu UI design system,
+ *   replacing MediaWiki's `mw-ui-button` classes with `Kiroku Hokan-ki`'s
+ *   self-contained `ta-btn-primary` and `ta-btn-quiet` styles for visual consistency.
  *
  * CHANGELOG v2.5.0:
  * - Changed: Replaced MediaWiki mw-ui-button dialogue buttons with a
@@ -231,8 +242,8 @@
       const page = response.query.pages[0];
       const primaryContent = page.revisions?.[0]?.content || "";
       const formattedPayload = primaryContent
-        ? `${primaryContent.trim()}\n\n${threadsWikitext.trim()}\n`
-        : `${threadsWikitext.trim()}\n`;
+        ? `${primaryContent.trim()}\\n\\n${threadsWikitext.trim()}\\n`
+        : `${threadsWikitext.trim()}\\n`;
 
       return this.api.postWithToken("csrf", {
         action: "edit",
@@ -358,7 +369,7 @@
   // ============================================================================
   class WikitextParser {
     static stripWikilinks(headingTitle) {
-      let cleared = headingTitle.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2");
+      let cleared = headingTitle.replace(/\[\[([^|]+)\|([^\]]+)\]\]/g, "$2");
       cleared = cleared.replace(/\[\[([^\]]+)\]\]/g, (_match, target) => {
         const elements = target.split(/[:/]/);
         return elements[elements.length - 1].trim();
@@ -423,7 +434,7 @@
         },
         {
           id: "global-mdy-signature",
-          re: /\b(\p{L}+)[\s\u200E\u200F\u00A0]+(\d{1,2}),\s+(\d{4})(?:\s*,\s*(\d{1,2})[.:](\d{2}))?/gu,
+          re: /\b(\p{L}+)[\s\u200E\u200F\u00A0]+(\d{1,2}),\s+(\d{4})(?:,\s*(\d{1,2})[.:](\d{2}))?/gu,
           extract: (m) => {
             const targetMonth = monthMap[m[1].toLowerCase().replace(".", "")];
             if (!targetMonth) return null;
@@ -561,7 +572,18 @@
 
     static generateButton(label, styles, interactionEvent, targetParent) {
       const buttonElement = document.createElement("button");
-      buttonElement.className = `mw-ui-button ${styles}`;
+      let classNames = "tng-btn"; // Start with the base Tengu button class
+      if (styles.includes("mw-ui-quiet")) {
+        classNames += " tng-btn-quiet";
+      } else if (styles.includes("mw-ui-progressive")) {
+        classNames += " tng-btn-primary";
+      } else if (styles.includes("mw-ui-destructive")) {
+        classNames += " tng-btn-destructive";
+      } else {
+        // Default to a quiet button if no specific variant is indicated.
+        classNames += " tng-btn-quiet";
+      }
+      buttonElement.className = classNames.trim();
       buttonElement.textContent = label;
       buttonElement.addEventListener("click", interactionEvent);
       if (targetParent) targetParent.appendChild(buttonElement);
@@ -570,20 +592,44 @@
 
     injectUtilityStyles() {
       mw.util.addCSS(`
-                .ta-btn { display: inline-flex; align-items: center; justify-content: center; margin-left: 8px; padding: 1px 4px; font-size: 0.8em; line-height: 1.4; background: none; border: 1px solid #a2a9b1; border-radius: 3px; cursor: pointer; vertical-align: middle; transition: background .15s, border-color .15s; white-space: nowrap; color: inherit; }
-                .ta-btn:hover { background: #eaf0fb; border-color: #36c; }
-                .ta-btn:disabled { opacity: .45; cursor: not-allowed; }
+                /* --- Tengu-style Buttons --- */
+                .tng-btn {
+                    display: inline-flex; align-items: center; justify-content: center;
+                    padding: 5px 14px; border-radius: 4px; font-size: 0.9em;
+                    font-weight: 600;
+                    cursor: pointer; border: 1px solid transparent;
+                    font-family: inherit; transition: background .12s, border-color .12s;
+                    white-space: nowrap;
+                }
+                .tng-btn-primary { background: #3366cc; color: #fff; border-color: #3366cc; }
+                .tng-btn-primary:hover:not(:disabled) { background: #2a4b9e; border-color: #2a4b9e; }
+                .tng-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+                .tng-btn-quiet { background: none; color: #202122; border-color: #a2a9b1; }
+                .tng-btn-quiet:hover:not(:disabled) { background: #f0f2f5; }
+                .tng-btn-quiet:disabled { opacity: .5; cursor: not-allowed; }
+                .tng-btn-destructive { background: #b00020; color: #fff; border-color: #b00020; }
+                .tng-btn-destructive:hover:not(:disabled) { background: #8a0018; border-color: #8a0018; }
+                .tng-btn-destructive:disabled { opacity: .5; cursor: not-allowed; }
+                
+                /* Custom inline button for Kiroku Hokan-ki, based on tng-btn structure */
+                .tng-btn-inline {
+                    margin-left: 8px; /* Specific to inline context */
+                    padding: 1px 4px;
+                    font-size: 0.8em;
+                    line-height: 1.4;
+                    border: 1px solid #a2a9b1;
+                    border-radius: 3px;
+                    background: none;
+                    color: inherit;
+                    vertical-align: middle;
+                }
+                .tng-btn-inline:hover:not(:disabled) {
+                    background: #eaf0fb;
+                    border-color: #36c;
+                }
+
                 .ta-btn-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: ta-spin .6s linear infinite; }
                 @keyframes ta-spin { to { transform: rotate(360deg); } }
-                .ta-btn-primary { display: inline-flex; align-items: center; justify-content: center; padding: 5px 14px; border-radius: 4px; font-size: 0.9em; font-weight: 600; cursor: pointer; border: 1px solid #3366cc; font-family: inherit; transition: background .12s, border-color .12s; white-space: nowrap; background: #3366cc; color: #fff; }
-                .ta-btn-primary:hover:not(:disabled) { background: #2a4b9e; border-color: #2a4b9e; }
-                .ta-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-                .ta-btn-quiet { display: inline-flex; align-items: center; justify-content: center; padding: 5px 14px; border-radius: 4px; font-size: 0.9em; font-weight: 600; cursor: pointer; border: 1px solid #a2a9b1; font-family: inherit; transition: background .12s, border-color .12s; white-space: nowrap; background: none; color: #202122; }
-                .ta-btn-quiet:hover:not(:disabled) { background: #f0f2f5; }
-                .ta-btn-quiet:disabled { opacity: .5; cursor: not-allowed; }
-                .ta-btn-destructive { display: inline-flex; align-items: center; justify-content: center; padding: 5px 14px; border-radius: 4px; font-size: 0.9em; font-weight: 600; cursor: pointer; border: 1px solid #b00020; font-family: inherit; transition: background .12s, border-color .12s; white-space: nowrap; background: #b00020; color: #fff; }
-                .ta-btn-destructive:hover:not(:disabled) { background: #8a0018; border-color: #8a0018; }
-                .ta-btn-destructive:disabled { opacity: .5; cursor: not-allowed; }
                 .ta-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 12px; animation: ta-fadein .15s ease-out; }
                 .ta-dialog { background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px; width: min(820px, 96%); height: min(580px, 82vh); display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif; font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden; }
                 .ta-dialog-header { padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0; font-weight: 700; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
@@ -638,7 +684,6 @@
                 .ta-progress-log { margin-top: 10px; font-size: 0.85em; color: #54595d; min-height: 1.5em; }
                 @keyframes ta-fadein  { from { opacity:0 } to { opacity:1 } }
                 @keyframes ta-slidein { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }
-
                 @media (prefers-color-scheme: dark) {
                     .ta-dialog { background:#1e1e1e; color:#eaecf0; border-color:#54595d; }
                     .ta-dialog-header, .ta-dialog-footer { background:#2a2a2a; border-color:#3a3a3a; }
@@ -657,8 +702,14 @@
                     .ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
                     .ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
                     .ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-                    .ta-btn { border-color:#54595d; color:#eaecf0; }
-                    .ta-btn:hover { background:#252535; border-color:#6699ff; }
+                    /* Dark mode for Tengu-style buttons */
+                    .tng-btn { border-color:#54595d; color:#eaecf0; } /* Base dark mode style */
+                    .tng-btn-primary { border-color:#6699ff; background:#6699ff; }
+                    .tng-btn-primary:hover:not(:disabled) { background:#4f7bd9; border-color:#4f7bd9; }
+                    .tng-btn-quiet:hover:not(:disabled) { background: #2a2a35; }
+                    .tng-btn-destructive { border-color:#ff6b6b; background:#ff6b6b; }
+                    .tng-btn-destructive:hover:not(:disabled) { background:#cc5555; border-color:#cc5555; }
+                    .tng-btn-inline:hover:not(:disabled) { background:#252535; border-color:#6699ff; } /* Inline button specific hover */
                 }
             `);
     }
@@ -742,10 +793,10 @@
       );
       headingNodes.forEach((heading, index) => {
         const threadItem = this.threads[index];
-        if (!threadItem || heading.querySelector(".ta-btn")) return;
+        if (!threadItem || heading.querySelector(".tng-btn-inline")) return;
 
         const inlineBtn = document.createElement("button");
-        inlineBtn.className = "ta-btn";
+        inlineBtn.className = "tng-btn tng-btn-inline"; // Use new Tengu inline button class
         inlineBtn.textContent = "📜";
         inlineBtn.title = "Archive with Kiroku Hokan-ki";
 
@@ -801,7 +852,7 @@
       paddingContainer.innerHTML = `
                 <p style="margin:0">No discussions were found on this talk page.</p>
                 <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
-                    Kiroku Hokan-ki only detects sections created with standard level-2 headings (<code>== … ==</code>).
+                    Kiroku Hokan-ki only detects sections created with standard level-2 headings (<code>== &hellip; ==</code>).
                 </p>`;
       body.appendChild(paddingContainer);
 
@@ -841,7 +892,7 @@
       const interfaceWrapper = document.createElement("div");
       interfaceWrapper.innerHTML = `
                 <div class="ta-toolbar">
-                    <button class="mw-ui-button mw-ui-quiet" id="ta-load-ts-btn" style="font-size:0.85em;">🔄 Scan timestamps</button>
+                    <button class="tng-btn tng-btn-quiet" id="ta-load-ts-btn" style="font-size:0.85em;">🔄 Scan timestamps</button>
                     <div class="ta-filter-age">
                         <span>Filter:</span>
                         <select id="ta-filter-sel">
@@ -885,6 +936,9 @@
         interfaceWrapper.querySelector("#ta-load-ts-btn");
       const filterDropdown = interfaceWrapper.querySelector("#ta-filter-sel");
 
+      // Update the "Scan timestamps" button to use tng-btn tng-btn-quiet class
+      fetchTimestampsBtn.className = "tng-btn tng-btn-quiet";
+
       const quantitativeFooterInfo = document.createElement("div");
       quantitativeFooterInfo.id = "ta-footer-info";
       quantitativeFooterInfo.className = "ta-footer-info";
@@ -894,7 +948,7 @@
 
       const submitBatchBtn = ArchiveUIManager.generateButton(
         "Archive selected with Kiroku Hokan-ki",
-        "mw-ui-progressive",
+        "mw-ui-progressive", // This will be mapped to tng-btn-primary
         () => this.triggerBatchExecutionFlow(tbody),
         operationalFooterRight,
       );
@@ -1130,13 +1184,13 @@
 
       const cancelBtn = ArchiveUIManager.generateButton(
         "Cancel",
-        "mw-ui-quiet",
+        "mw-ui-quiet", // This will be mapped to tng-btn-quiet
         () => overlay.closeHandler(),
         functionalFooterRight,
       );
       const confirmBtn = ArchiveUIManager.generateButton(
         "Confirm archive",
-        "mw-ui-progressive",
+        "mw-ui-progressive", // This will be mapped to tng-btn-primary
         async () => {
           confirmBtn.disabled = true;
           cancelBtn.disabled = true;
@@ -1163,7 +1217,7 @@
 
               const mergedWikitextPayload = itemsArray
                 .map((i) => i.thread.content.trim())
-                .join("\n\n");
+                .join("\\n\\n");
               const targetSummaryDescription = `Archiving discussions to subpage (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
 
               await this.apiService.saveToArchiveTarget(
@@ -1303,13 +1357,13 @@
 
         const singleCancelBtn = ArchiveUIManager.generateButton(
           "Cancel",
-          "mw-ui-quiet",
+          "mw-ui-quiet", // This will be mapped to tng-btn-quiet
           () => overlay.closeHandler(),
           UIControlsFooterRight,
         );
         const singleConfirmBtn = ArchiveUIManager.generateButton(
           "Archive with Kiroku Hokan-ki",
-          "mw-ui-progressive",
+          "mw-ui-progressive", // This will be mapped to tng-btn-primary
           async () => {
             singleConfirmBtn.disabled = true;
             singleCancelBtn.disabled = true;
