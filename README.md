@@ -1,6 +1,7 @@
 # Kiroku Hōkan-ki — 記録保管機  
 
-Talk Page Archiving Gadget for MediaWiki
+**Type:** Semi-automated talk page archiving gadget
+**Language:** JavaScript (User script)
 
 ---
 
