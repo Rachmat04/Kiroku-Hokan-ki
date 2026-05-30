@@ -1,11 +1,11 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 2.3.0
+ * Version 2.4.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
- * An automated Talk Page Archiving Gadget for MediaWiki that streamlines user
+ * An automated talk page archiving gadget for MediaWiki that streamlines user
  * talk page maintenance by moving inactive discussions into subpages.
  *
  * KEY FEATURES:
@@ -13,6 +13,15 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
+ *
+ * CHANGELOG v2.4.0:
+ * - Added: classifyApiError() utility maps known MediaWiki API error codes
+ *   (e.g. blocked, protectedpage, readonly, editconflict) to plain-English
+ *   messages displayed in both the dialogue box and the browser console.
+ * - Changed: Batch and single-archive error handlers now show the specific
+ *   failure reason in the progress log instead of a generic fallback message.
+ * - Changed: Console error messages now include the classified error code as
+ *   part of the log label for easier filtering.
  *
  * CHANGELOG v2.3.0:
  * - Added: The gadget portlet now appears on any page, with a caveat notice for
@@ -105,6 +114,70 @@
 
   const IS_ALLOWED_CONTEXT =
     isAllowedUser && isTargetNamespace && isTargetPage && isValidAction;
+
+  // ============================================================================
+  // [UTILITY] API ERROR CLASSIFIER
+  // ============================================================================
+  /**
+   * Classifies a caught MediaWiki API error into a structured result containing
+   * a short code and a human-readable message suitable for display in a dialogue
+   * box or the browser console.
+   *
+   * mw.Api rejects failed postWithToken calls with the API error code as a
+   * plain string (e.g. "blocked", "protectedpage"). Network failures or
+   * unexpected exceptions produce an Error object instead.
+   *
+   * @param {*} err - The value caught by a catch block.
+   * @returns {{ code: string, message: string }}
+   */
+  function classifyApiError(err) {
+    const KNOWN_ERRORS = {
+      blocked: "Your IP address or account has been blocked from editing.",
+      autoblocked:
+        "Your IP address has been automatically blocked because it was recently used by a blocked user.",
+      ipblocked: "Your IP address is blocked from editing.",
+      protectedpage: "This page is protected and cannot be edited.",
+      cascadeprotected:
+        "This page is protected via cascade protection and cannot be edited.",
+      readonly: "The wiki is currently in read-only mode.",
+      badtoken:
+        "The CSRF token was invalid. Try reloading the page and archiving again.",
+      permissiondenied: "You do not have permission to edit this page.",
+      editconflict:
+        "An edit conflict occurred. Please reload the page and try again.",
+      ratelimited:
+        "You have been rate-limited. Please wait a moment before trying again.",
+      "abusefilter-disallowed": "The edit was blocked by an abuse filter rule.",
+      "abusefilter-warning":
+        "An abuse filter warning was triggered. The edit was not saved.",
+      confirmemail: "You must confirm your e-mail address before editing.",
+      blocked_range: "Your IP address range has been blocked from editing.",
+    };
+
+    // mw.Api rejects with a string error code on API-level failures.
+    if (typeof err === "string") {
+      const message =
+        KNOWN_ERRORS[err] ||
+        `The server returned an error: "${err}". Check the browser console for details.`;
+      return { code: err, message };
+    }
+
+    // Standard JavaScript Error object (e.g. network failure).
+    if (err instanceof Error) {
+      return {
+        code: "exception",
+        message:
+          err.message ||
+          "An unexpected error occurred. Check the browser console for details.",
+      };
+    }
+
+    return {
+      code: "unknown",
+      message:
+        "An unexpected error occurred. Check the browser console for details.",
+    };
+  }
 
   // ============================================================================
   // [MODULE 02] MEDIAWIKI API SERVICE LAYER
@@ -1112,11 +1185,12 @@
               window.location.reload();
             }, 1200);
           } catch (failureTransactionError) {
+            const errorDetail = classifyApiError(failureTransactionError);
             console.error(
-              "[KirokuHokanki] Error inside batch execution flow:",
+              `[KirokuHokanki] Batch archiving failed [${errorDetail.code}]:`,
               failureTransactionError,
             );
-            terminalLog.innerHTML = `<span style='color:#b00;'>An error occurred. Please check the browser console for details.</span>`;
+            terminalLog.innerHTML = `<span style='color:#b00;'>Archiving failed: ${mw.html.escape(errorDetail.message)}</span>`;
             elementsSelectedForArchiving.forEach((i) => {
               i.status = "error";
             });
@@ -1264,11 +1338,12 @@
                 window.location.reload();
               }, 1000);
             } catch (err) {
+              const errorDetail = classifyApiError(err);
               console.error(
-                "[KirokuHokanki] Section archive error state encountered:",
+                `[KirokuHokanki] Section archiving failed [${errorDetail.code}]:`,
                 err,
               );
-              singleTerminalNode.innerHTML = `<span style='color:#b00;'>Archiving failed. Please check the browser console.</span>`;
+              singleTerminalNode.innerHTML = `<span style='color:#b00;'>Archiving failed: ${mw.html.escape(errorDetail.message)}</span>`;
               singleCancelBtn.disabled = false;
             }
           },
