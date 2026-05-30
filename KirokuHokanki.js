@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 2.2.0
+ * Version 2.3.0
  * Talk Page Archiving Gadget
  * ============================================================================
  * PURPOSE:
@@ -14,14 +14,22 @@
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
  *
+ * CHANGELOG v2.3.0:
+ * - Added: The gadget portlet now appears on any page, with a caveat notice for
+ *   unauthorised contexts.
+ * - Changed: Consistently applied sentence case and en-GB spelling across all
+ *   interfaces and comments.
+ *
  * CHANGELOG v2.2.0:
  * - Changed: Allowed table header text to wrap onto multiple lines to ensure
- * readability on constrained or smaller screen dimensions.
+ *   readability on constrained or smaller screen dimensions.
  * - Changed: Formally bumped minor version to reflect interface enhancements.
  *
  * CHANGELOG v2.1.2:
- * - Added: Visual override indicator for manually selected years in the single-thread archive dialog.
- * - Changed: Reduced the vertical height of the single-thread archive dialog for better screen real-estate utilisation.
+ * - Added: Visual override indicator for manually selected years in the
+ *   single-thread archive dialog.
+ * - Changed: Reduced the vertical height of the single-thread archive dialog
+ *   for better screen real-estate utilisation.
  * ============================================================================
  */
 // <nowiki>
@@ -38,7 +46,7 @@
     }
     static get TARGET_NAMESPACE() {
       return 3;
-    } // User Talk Namespace
+    } // User talk namespace
 
     /**
      * Dynamically detects the active wiki language environments at runtime.
@@ -84,17 +92,19 @@
 
   const mwConfig = mw.config.get();
 
-  // Environment Guardrails
-  if (mwConfig.wgUserName !== ArchiveConfig.ALLOWED_USER) return;
-  if (mwConfig.wgNamespaceNumber !== ArchiveConfig.TARGET_NAMESPACE) return;
-  if (mwConfig.wgTitle !== ArchiveConfig.ALLOWED_USER) return;
-  if (
-    mwConfig.wgAction === "history" ||
-    mwConfig.wgDiffNewId ||
-    mwConfig.wgDiffOldId ||
-    mwConfig.wgCurRevisionId !== mwConfig.wgRevisionId
-  )
-    return;
+  // Environment execution context check
+  const isAllowedUser = mwConfig.wgUserName === ArchiveConfig.ALLOWED_USER;
+  const isTargetNamespace =
+    mwConfig.wgNamespaceNumber === ArchiveConfig.TARGET_NAMESPACE;
+  const isTargetPage = mwConfig.wgTitle === ArchiveConfig.ALLOWED_USER;
+  const isValidAction =
+    mwConfig.wgAction === "view" &&
+    !mwConfig.wgDiffNewId &&
+    !mwConfig.wgDiffOldId &&
+    mwConfig.wgCurRevisionId === mwConfig.wgRevisionId;
+
+  const IS_ALLOWED_CONTEXT =
+    isAllowedUser && isTargetNamespace && isTargetPage && isValidAction;
 
   // ============================================================================
   // [MODULE 02] MEDIAWIKI API SERVICE LAYER
@@ -167,7 +177,7 @@
   // ============================================================================
   // [MODULE 03] DYNAMIC LOCALISATION ENGINE
   // ============================================================================
-  class LocalizationEngine {
+  class LocalisationEngine {
     constructor(apiService) {
       this.apiService = apiService;
       this.monthMap = {};
@@ -572,15 +582,20 @@
   class GadgetController {
     constructor() {
       this.apiService = new WikiApiService();
-      this.localeEngine = new LocalizationEngine(this.apiService);
+      this.localeEngine = new LocalisationEngine(this.apiService);
       this.uiManager = new ArchiveUIManager();
       this.archiveSubpage = ArchiveConfig.getArchiveSubpagePrefix();
       this.threads = [];
       this.internalState = [];
       this.filterDays = 0;
+      this.portletLink = null;
     }
 
     async initialise() {
+      this.renderSystemPortlets();
+
+      if (!IS_ALLOWED_CONTEXT) return;
+
       try {
         const [source] = await Promise.all([
           this.apiService.getPageSourceData(),
@@ -590,11 +605,11 @@
         if (!source.text) return;
 
         this.threads = WikitextParser.dissectThreads(source.text);
-        this.renderSystemPortlets();
+        this.updatePortletLabel();
         this.bindInlineSectionButtons();
       } catch (error) {
         console.error(
-          "[KirokuHokanki] Initialization execution failed:",
+          "[KirokuHokanki] Initialisation execution failed:",
           error,
         );
       }
@@ -605,23 +620,32 @@
     }
 
     renderSystemPortlets() {
-      const portletLabel = this.threads.length
-        ? `📜 Kiroku Hokan-ki (${this.threads.length})`
-        : "📜 Kiroku Hokan-ki";
-
-      const portletLink = mw.util.addPortletLink(
+      this.portletLink = mw.util.addPortletLink(
         "p-cactions",
         "#",
-        portletLabel,
+        "📜 Kiroku Hokan-ki",
         "ca-kiroku-hokanki",
         "Open Kiroku Hokan-ki archive manager",
       );
 
-      $(portletLink).on("click", (event) => {
+      $(this.portletLink).on("click", (event) => {
         event.preventDefault();
-        if (!this.threads.length) this.displayEmptyWarningNotice();
-        else this.openBulkArchivePanel();
+        if (!IS_ALLOWED_CONTEXT) {
+          this.displayCaveatNotice();
+        } else if (!this.threads.length) {
+          this.displayEmptyWarningNotice();
+        } else {
+          this.openBulkArchivePanel();
+        }
       });
+    }
+
+    updatePortletLabel() {
+      if (this.threads.length && this.portletLink) {
+        const targetLink =
+          this.portletLink.querySelector("a") || this.portletLink;
+        targetLink.textContent = `📜 Kiroku Hokan-ki (${this.threads.length})`;
+      }
     }
 
     bindInlineSectionButtons() {
@@ -647,6 +671,34 @@
           heading.insertBefore(inlineBtn, structuralEditSection);
         else heading.appendChild(inlineBtn);
       });
+    }
+
+    displayCaveatNotice() {
+      const { overlay, body, footer } = this.uiManager.instantiateDialog({
+        title: "Kiroku Hokan-ki",
+        icon: "📜",
+        small: true,
+      });
+
+      const paddingContainer = document.createElement("div");
+      paddingContainer.className = "ta-dialog-body-pad";
+      paddingContainer.innerHTML = `
+                <p style="margin:0; font-weight:bold; color:#b00;">Feature restricted</p>
+                <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
+                    This feature can only be used on specific talk pages by authorised users.
+                </p>`;
+      body.appendChild(paddingContainer);
+
+      const rightContainer = document.createElement("div");
+      rightContainer.className = "ta-dialog-footer-right";
+      footer.appendChild(rightContainer);
+
+      ArchiveUIManager.generateButton(
+        "Close",
+        "mw-ui-quiet",
+        () => overlay.closeHandler(),
+        rightContainer,
+      );
     }
 
     displayEmptyWarningNotice() {
