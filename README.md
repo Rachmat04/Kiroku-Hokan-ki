@@ -1,51 +1,86 @@
-# Kiroku Hokan-ki (Archive Assistant)
+# Kiroku Hōkan-ki — 記録保管機  
+**Version 2.3.0**  
+Talk Page Archiving Gadget for MediaWiki
+
+---
 
 ## Overview
 
-**Kiroku Hokan-ki** is a gadget that automates the archiving of talk page discussions based on year. It helps maintain structured discussion pages by moving older threads into year-based archive subpages.
+**Kiroku Hōkan-ki** is a MediaWiki gadget designed to help maintain talk pages. It moves inactive discussion threads into archive subpages automatically.
 
-## Features
+It is intended for user talk pages and project talk pages where long-running discussions need regular cleanup.
 
-* Adds archive buttons to level-2 headings on talk pages
-* Provides a bulk management panel for handling multiple threads
-* Detects and filters discussion threads automatically
-* Moves selected threads into year-based archive subpages
-* Cleans up the source page after archiving
+---
 
-## Scope
+## Purpose
 
-* Works only within talk page namespaces
-* Uses a year-based archive structure (for example: `/2024`, `/2025`)
+This tool helps with:
 
-## Limitations
+- Keeping talk pages readable
+- Reducing page length over time
+- Organising older discussions into archives
+- Preserving discussion history in a structured way
 
-* Only supports talk pages
-* Requires write API access to modify page content
-* Does not support non-talk namespaces
-* Not designed for archive structures that are not based on years
+---
 
-## Access Control
+## Key features
 
-* Restricted to a single account: `Rachmat04`
-* Access is enforced within the script
+- Splits talk pages into threads using level-2 headings (`== Heading ==`)
+- Detects user signatures and timestamps across many wiki languages (400+ formats)
+- Shows relative time labels (for example: `~2 weeks ago`)
+- Supports batch archiving of multiple threads
+- Includes safeguards against edit conflicts and outdated basetimestamps
+- Provides a gadget portlet entry available across pages (with context warning when not on talk pages)
 
-## Requirements
+---
 
-* JavaScript-enabled gadget environment
-* Permission to edit pages via the API
-* Access to talk page namespaces
+## How it works
 
-## How It Works
+1. The gadget scans the current page for level-2 headings.
+2. Each section is treated as a separate discussion thread.
+3. It detects the latest timestamp in each thread.
+4. Threads older than the configured threshold are selected for archiving.
+5. Selected threads are moved into an archive subpage.
+6. The original page is updated with a safe edit check.
 
-1. Detects level-2 headings on talk pages
-2. Injects archive buttons beside headings
-3. Allows selection of threads for archiving
-4. Groups threads by year
-5. Moves content to the relevant archive subpages
-6. Removes archived threads from the original page
+---
+
+## Access restriction notice
+
+This gadget is restricted for use by specific authorised users only.
+
+- If you are not an authorised user, you are not intended to use this tool.
+- Other users must modify the source code before using it in their own environment.
+- No support is provided for unauthorised or modified deployments.
+
+---
+
+## Safety notes
+
+- The gadget checks for edit conflicts before saving.
+- If the page has changed during processing, the operation will stop.
+- Users should review selected threads before confirming archiving.
+
+---
 
 ## Notes
 
-* Intended for structured archival workflows
-* Built around year-based organisation
-* Changes are applied directly to pages via the API
+- Timestamp parsing supports multiple languages and formats.
+- Relative time display is approximate and may vary depending on local wiki configuration.
+- Performance depends on page size and number of threads.
+
+---
+
+## Disclaimer
+
+This gadget modifies page content on save.
+
+Use with care on shared or high-traffic talk pages. Always verify changes before confirming.
+
+---
+
+## License
+
+This project is licensed under the MIT License.
+
+You are free to use, copy, modify, and distribute this software under the terms of the MIT License, provided that the original copyright notice and permission notice are included in all copies or substantial portions of the software.
