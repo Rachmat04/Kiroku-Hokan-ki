@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 2.1.2
+ * Version 2.2.0
  * Talk Page Archiving Gadget
  * ============================================================================
  * PURPOSE:
@@ -13,6 +13,11 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
+ *
+ * CHANGELOG v2.2.0:
+ * - Changed: Allowed table header text to wrap onto multiple lines to ensure
+ * readability on constrained or smaller screen dimensions.
+ * - Changed: Formally bumped minor version to reflect interface enhancements.
  *
  * CHANGELOG v2.1.2:
  * - Added: Visual override indicator for manually selected years in the single-thread archive dialog.
@@ -350,6 +355,8 @@
           if (fields) {
             const [yr, mo, dy, hr, mn] = fields;
 
+            // Reverted back to using unified UTC construction to remain in sync
+            // with generic MediaWiki server setups.
             const baselineCandidate = new Date(
               Date.UTC(yr, mo - 1, dy, hr, mn),
             );
@@ -499,7 +506,7 @@
                 .ta-col-year   { width: 82px; }
                 .ta-col-dest   { width: 190px; }
                 .ta-col-status { width: 96px; }
-                .ta-thread-table th { padding: 7px 12px; background: #f8f9fa; border-bottom: 2px solid #eaecf0; text-align: left; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+                .ta-thread-table th { padding: 7px 12px; background: #f8f9fa; border-bottom: 2px solid #eaecf0; text-align: left; font-weight: 600; white-space: normal; word-wrap: break-word; position: sticky; top: 0; z-index: 1; }
                 .ta-thread-table td { padding: 8px 12px; border-bottom: 1px solid #eaecf0; vertical-align: middle; }
                 .ta-thread-table tr:last-child td { border-bottom: none; }
                 .ta-thread-table tr.ta-selected td { background: #eaf0fb; }
