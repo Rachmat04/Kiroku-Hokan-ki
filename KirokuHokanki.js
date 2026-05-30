@@ -2,7 +2,7 @@
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
  * Version 2.3.0
- * Talk Page Archiving Gadget
+ * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
  * An automated Talk Page Archiving Gadget for MediaWiki that streamlines user
