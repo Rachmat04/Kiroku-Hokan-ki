@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 2.4.0
+ * Version 2.5.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -13,6 +13,12 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
+ *
+ * CHANGELOG v2.5.0:
+ * - Changed: Replaced MediaWiki mw-ui-button dialogue buttons with a
+ *   self-contained Tengu-style button system (ta-btn-primary, ta-btn-quiet,
+ *   ta-btn-destructive). Appearance is now independent of the wiki stylesheet
+ *   and visually consistent across all dialogue footers and the scan toolbar.
  *
  * CHANGELOG v2.4.0:
  * - Added: classifyApiError() utility maps known MediaWiki API error codes
@@ -569,6 +575,15 @@
                 .ta-btn:disabled { opacity: .45; cursor: not-allowed; }
                 .ta-btn-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: ta-spin .6s linear infinite; }
                 @keyframes ta-spin { to { transform: rotate(360deg); } }
+                .ta-btn-primary { display: inline-flex; align-items: center; justify-content: center; padding: 5px 14px; border-radius: 4px; font-size: 0.9em; font-weight: 600; cursor: pointer; border: 1px solid #3366cc; font-family: inherit; transition: background .12s, border-color .12s; white-space: nowrap; background: #3366cc; color: #fff; }
+                .ta-btn-primary:hover:not(:disabled) { background: #2a4b9e; border-color: #2a4b9e; }
+                .ta-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+                .ta-btn-quiet { display: inline-flex; align-items: center; justify-content: center; padding: 5px 14px; border-radius: 4px; font-size: 0.9em; font-weight: 600; cursor: pointer; border: 1px solid #a2a9b1; font-family: inherit; transition: background .12s, border-color .12s; white-space: nowrap; background: none; color: #202122; }
+                .ta-btn-quiet:hover:not(:disabled) { background: #f0f2f5; }
+                .ta-btn-quiet:disabled { opacity: .5; cursor: not-allowed; }
+                .ta-btn-destructive { display: inline-flex; align-items: center; justify-content: center; padding: 5px 14px; border-radius: 4px; font-size: 0.9em; font-weight: 600; cursor: pointer; border: 1px solid #b00020; font-family: inherit; transition: background .12s, border-color .12s; white-space: nowrap; background: #b00020; color: #fff; }
+                .ta-btn-destructive:hover:not(:disabled) { background: #8a0018; border-color: #8a0018; }
+                .ta-btn-destructive:disabled { opacity: .5; cursor: not-allowed; }
                 .ta-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 12px; animation: ta-fadein .15s ease-out; }
                 .ta-dialog { background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px; width: min(820px, 96%); height: min(580px, 82vh); display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif; font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden; }
                 .ta-dialog-header { padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0; font-weight: 700; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
