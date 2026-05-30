@@ -1,12 +1,11 @@
 /**
  * ============================================================================
  * KIROKU HŌKAN-KI — 記録保管機
- * Version 2.0.0
+ * Version 2.1.2
  * Talk Page Archiving Gadget
  * ============================================================================
- * 
  * PURPOSE:
- * An automated Talk Page Archiving Gadget for MediaWiki that streamlines user 
+ * An automated Talk Page Archiving Gadget for MediaWiki that streamlines user
  * talk page maintenance by moving inactive discussions into subpages.
  *
  * KEY FEATURES:
@@ -14,6 +13,10 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
+ *
+ * CHANGELOG v2.1.2:
+ * - Added: Visual override indicator for manually selected years in the single-thread archive dialog.
+ * - Changed: Reduced the vertical height of the single-thread archive dialog for better screen real-estate utilisation.
  * ============================================================================
  */
 // <nowiki>
@@ -346,9 +349,11 @@
           const fields = pattern.extract(compositionMatch);
           if (fields) {
             const [yr, mo, dy, hr, mn] = fields;
+
             const baselineCandidate = new Date(
               Date.UTC(yr, mo - 1, dy, hr, mn),
             );
+
             if (!isNaN(baselineCandidate.getTime())) {
               if (
                 !newestResolvedDate ||
@@ -370,16 +375,14 @@
     static getRelativeTimeAgo(date) {
       if (!date) return "";
       const diffMs = Date.now() - date.getTime();
-      const diffDays = Math.floor(diffMs / 86400000);
 
-      if (diffDays < 1) {
-        const diffHours = Math.floor(diffMs / 3600000);
-        if (diffHours < 1) {
-          const diffMins = Math.floor(diffMs / 60000);
-          return `~${diffMins || 1} min${diffMins !== 1 ? "s" : ""} ago`;
-        }
-        return `~${diffHours} hr${diffHours !== 1 ? "s" : ""} ago`;
-      }
+      // Simple guard against future timestamps resulting in negative times
+      if (diffMs < 0) return `just now`;
+
+      // Render "today" if the thread timeline falls within a 24-hour cycle.
+      if (diffMs < 86400000) return `today`;
+
+      const diffDays = Math.floor(diffMs / 86400000);
       if (diffDays < 7)
         return `~${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
 
@@ -477,7 +480,7 @@
                 .ta-btn-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: ta-spin .6s linear infinite; }
                 @keyframes ta-spin { to { transform: rotate(360deg); } }
                 .ta-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 12px; animation: ta-fadein .15s ease-out; }
-                .ta-dialog { background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px; width: min(820px, 96%); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif; font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden; }
+                .ta-dialog { background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px; width: min(820px, 96%); height: min(580px, 82vh); display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif; font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden; }
                 .ta-dialog-header { padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0; font-weight: 700; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
                 .ta-dialog-header-left { display: flex; align-items: center; gap: 7px; }
                 .ta-dialog-close { background: none; border: none; font-size: 1.2em; cursor: pointer; color: #54595d; padding: 0 2px; line-height: 1; }
@@ -485,24 +488,29 @@
                 .ta-dialog-body { padding: 0; overflow-y: auto; flex: 1; }
                 .ta-dialog-footer { padding: 10px 14px; background: #f8f9fa; border-top: 1px solid #eaecf0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0; }
                 .ta-dialog-footer-right { display: flex; gap: 7px; }
-                .ta-dialog-sm { width: min(520px, 96%); }
+                .ta-dialog-sm { width: min(520px, 96%); height: min(290px, 82vh); }
                 .ta-toolbar { padding: 9px 14px; background: #f0f2f5; border-bottom: 1px solid #eaecf0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
                 .ta-toolbar label { display: flex; align-items: center; gap: 5px; font-size: 0.87em; font-weight: 600; cursor: pointer; }
                 .ta-filter-age { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
                 .ta-filter-age select { padding: 2px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.95em; }
-                .ta-thread-table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+                .ta-thread-table { width: 100%; border-collapse: collapse; font-size: 0.88em; table-layout: fixed; min-width: 700px; }
+                .ta-col-check  { width: 36px; }
+                .ta-col-ts     { width: 200px; }
+                .ta-col-year   { width: 82px; }
+                .ta-col-dest   { width: 190px; }
+                .ta-col-status { width: 96px; }
                 .ta-thread-table th { padding: 7px 12px; background: #f8f9fa; border-bottom: 2px solid #eaecf0; text-align: left; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
                 .ta-thread-table td { padding: 8px 12px; border-bottom: 1px solid #eaecf0; vertical-align: middle; }
                 .ta-thread-table tr:last-child td { border-bottom: none; }
                 .ta-thread-table tr.ta-selected td { background: #eaf0fb; }
                 .ta-thread-table tr:hover td { background: #f4f7fc; }
                 .ta-thread-table tr.ta-selected:hover td { background: #ddeaf9; }
-                .ta-td-check  { width: 32px; text-align: center; }
-                .ta-td-title  { max-width: 240px; word-break: break-word; }
-                .ta-td-ts     { white-space: nowrap; color: #54595d; min-width: 90px; }
-                .ta-td-year   { width: 80px; text-align: center; }
+                .ta-thread-table .ta-td-check { text-align: center; }
+                .ta-td-title  { word-break: break-word; overflow: hidden; }
+                .ta-td-ts     { white-space: nowrap; color: #54595d; overflow: hidden; text-overflow: ellipsis; }
+                .ta-td-year   { text-align: center; }
                 .ta-td-dest   { color: #3366cc; font-size: 0.85em; word-break: break-all; }
-                .ta-td-status { width: 90px; text-align: center; }
+                .ta-td-status { text-align: center; }
                 .ta-year-sel { padding: 2px 4px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.9em; width: 70px; cursor: pointer; background: #fff; color: #202122; }
                 .ta-year-sel.ta-year-override { border-color: #d4730a; background: #fff8ee; color: #7a3a00; font-weight: 700; }
                 .ta-year-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.88em; }
@@ -686,7 +694,6 @@
       const interfaceWrapper = document.createElement("div");
       interfaceWrapper.innerHTML = `
                 <div class="ta-toolbar">
-                    <label for="ta-chk-all"><input type="checkbox" id="ta-chk-all"> Select all</label>
                     <button class="mw-ui-button mw-ui-quiet" id="ta-load-ts-btn" style="font-size:0.85em;">🔄 Scan timestamps</button>
                     <div class="ta-filter-age">
                         <span>Filter:</span>
@@ -701,9 +708,17 @@
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="ta-thread-table">
+                        <colgroup>
+                            <col class="ta-col-check">
+                            <col>
+                            <col class="ta-col-ts">
+                            <col class="ta-col-year">
+                            <col class="ta-col-dest">
+                            <col class="ta-col-status">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th class="ta-td-check"></th>
+                                <th class="ta-td-check"><input type="checkbox" id="ta-chk-all"></th>
                                 <th>Discussion topic</th>
                                 <th class="ta-td-ts">Last active</th>
                                 <th class="ta-td-year">Archive year</th>
@@ -762,13 +777,20 @@
         if (event.target.classList.contains("ta-row-year")) {
           const parsedYear = parseInt(event.target.value, 10);
           localStateItem.year = parsedYear;
-          localStateItem.yearOverride = true;
           localStateItem.archiveTitle =
             this.getArchiveDestinationPath(parsedYear);
 
+          const referenceYear =
+            localStateItem.tsLoaded && localStateItem.timestamp
+              ? localStateItem.timestamp.getUTCFullYear()
+              : new Date().getUTCFullYear();
+          localStateItem.yearOverride = parsedYear !== referenceYear;
+
           historicalRow.querySelector(".ta-row-dest").textContent =
             localStateItem.archiveTitle;
-          event.target.className = "ta-year-sel ta-year-override";
+          event.target.className = localStateItem.yearOverride
+            ? "ta-year-sel ta-year-override"
+            : "ta-year-sel";
         }
       });
 
@@ -873,7 +895,9 @@
             const relativeTimeStr = WikitextParser.getRelativeTimeAgo(
               item.timestamp,
             );
-            isoDateDisplay = `${item.timestamp.toISOString().slice(0, 10)} (${relativeTimeStr})`;
+            // Restored standard .toISOString() parsing behavior for absolute compliance with UTC timelines.
+            const isoDateStr = item.timestamp.toISOString().slice(0, 10);
+            isoDateDisplay = `${isoDateStr} (${relativeTimeStr})`;
           } else {
             isoDateDisplay = "Not found";
           }
@@ -1080,6 +1104,7 @@
         const relativeTimeStr = activityDateResolved
           ? ` (${WikitextParser.getRelativeTimeAgo(activityDateResolved)})`
           : "";
+
         const isoDateString = activityDateResolved
           ? `${activityDateResolved.toISOString().slice(0, 10)}${relativeTimeStr}`
           : "No signature found";
@@ -1087,11 +1112,17 @@
         const localRenderRoutine = () => {
           const destinationPathString =
             this.getArchiveDestinationPath(systemSelectedYear);
+
+          const isYearOverride = systemSelectedYear !== resolvedYear;
+          const selectStyleClass = isYearOverride
+            ? "ta-year-sel ta-year-override"
+            : "ta-year-sel";
+
           workzone.innerHTML = `
                         <p>Last active signature: <b>${mw.html.escape(isoDateString)}</b></p>
                         <div class="ta-year-row">
                             <label for="ta-single-year-select">Archive year:</label>
-                            <select id="ta-single-year-select" class="ta-year-sel"></select>
+                            <select id="ta-single-year-select" class="${selectStyleClass}"></select>
                         </div>
                         <div class="ta-dest-preview">Archive path: <b>${mw.html.escape(destinationPathString)}</b></div>
                         <div class="ta-progress-log" id="ta-single-execution-terminal-log"></div>`;
