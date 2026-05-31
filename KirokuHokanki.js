@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.5.4
+ * Version 2.6.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -96,13 +96,6 @@
    * Classifies a caught MediaWiki API error into a structured result containing
    * a short code and a human-readable message suitable for display in a dialogue
    * box or the browser console.
-   *
-   * mw.Api rejects failed postWithToken calls with the API error code as a
-   * plain string (e.g. "blocked", "protectedpage"). Network failures or
-   * unexpected exceptions produce an Error object instead.
-   *
-   * @param {*} err - The value caught by a catch block.
-   * @returns {{ code: string, message: string }}
    */
   function classifyApiError(err) {
     const KNOWN_ERRORS = {
@@ -128,7 +121,6 @@
       blocked_range: "Your IP address range has been blocked from editing.",
     };
 
-    // mw.Api rejects with a string error code on API-level failures.
     if (typeof err === "string") {
       const message =
         KNOWN_ERRORS[err] ||
@@ -136,7 +128,6 @@
       return { code: err, message };
     }
 
-    // Standard JavaScript Error object (e.g. network failure).
     if (err instanceof Error) {
       return {
         code: "exception",
@@ -280,9 +271,9 @@
             messages.forEach((msg) => {
               if (msg.content && !msg.missing) {
                 const cleanTerm = msg.content.toLowerCase().trim();
-                const normalizedIndex =
+                const normalisedIndex =
                   primaryMessageKeys.indexOf(msg.name) % 12;
-                this.monthMap[cleanTerm] = normalizedIndex + 1;
+                this.monthMap[cleanTerm] = normalisedIndex + 1;
               }
             });
           } catch (err) {
@@ -335,7 +326,8 @@
     }
 
     static dissectThreads(rawWikitext) {
-      const regexMatcher = /^==\s*([^=\n][^\n]*?)\s*==\s*$/gm;
+      // Prevents matching empty sections like "== ==" or "==  =="
+      const regexMatcher = /^==\s*([^=\n]*?[^\s=][^=\n]*?)\s*==\s*$/gm;
       const entryPoints = [];
       let segment;
 
@@ -420,7 +412,8 @@
           if (fields) {
             const [yr, mo, dy, hr, mn] = fields;
 
-            // Using unified UTC construction to remain in sync with generic MediaWiki server setups.
+            // Retaining unified UTC construction. This allows exact preservation of
+            // the string year from the wikitext without local timezone shifts affecting the year folder logic.
             const baselineCandidate = new Date(
               Date.UTC(yr, mo - 1, dy, hr, mn),
             );
@@ -447,10 +440,9 @@
       if (!date) return "";
       const diffMs = Date.now() - date.getTime();
 
-      // Simple guard against future timestamps resulting in negative times
+      // Guard against future timestamps resulting in negative times
       if (diffMs < 0) return `just now`;
 
-      // Render "today" if the thread timeline falls within a 24-hour cycle.
       if (diffMs < 86400000) return `today`;
 
       const diffDays = Math.floor(diffMs / 86400000);
@@ -536,7 +528,7 @@
 
     static generateButton(label, styles, interactionEvent, targetParent) {
       const buttonElement = document.createElement("button");
-      let classNames = "tng-btn"; // Start with the base Tengu button class
+      let classNames = "tng-btn";
       if (styles.includes("mw-ui-quiet")) {
         classNames += " tng-btn-quiet";
       } else if (styles.includes("mw-ui-progressive")) {
@@ -544,7 +536,6 @@
       } else if (styles.includes("mw-ui-destructive")) {
         classNames += " tng-btn-destructive";
       } else {
-        // Default to a quiet button if no specific variant is indicated.
         classNames += " tng-btn-quiet";
       }
       buttonElement.className = classNames.trim();
@@ -575,9 +566,9 @@
                 .tng-btn-destructive:hover:not(:disabled) { background: #8a0018; border-color: #8a0018; }
                 .tng-btn-destructive:disabled { opacity: .5; cursor: not-allowed; }
                 
-                /* Custom inline button for Kiroku Hokan-ki, based on tng-btn structure */
+                /* Custom inline button for Kiroku Hokan-ki */
                 .tng-btn-inline {
-                    margin-left: 8px; /* Specific to inline context */
+                    margin-left: 8px;
                     padding: 1px 4px;
                     font-size: 0.8em;
                     line-height: 1.4;
@@ -666,14 +657,13 @@
                     .ta-year-sel.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
                     .ta-year-row select { background:#2a2a2a; color:#eaecf0; border-color:#54595d; }
                     .ta-year-row select.ta-year-override { background:#2d1a00; color:#ffc060; border-color:#a06000; }
-                    /* Dark mode for Tengu-style buttons */
-                    .tng-btn { border-color:#54595d; color:#eaecf0; } /* Base dark mode style */
+                    .tng-btn { border-color:#54595d; color:#eaecf0; }
                     .tng-btn-primary { border-color:#6699ff; background:#6699ff; }
                     .tng-btn-primary:hover:not(:disabled) { background:#4f7bd9; border-color:#4f7bd9; }
                     .tng-btn-quiet:hover:not(:disabled) { background: #2a2a35; }
                     .tng-btn-destructive { border-color:#ff6b6b; background:#ff6b6b; }
                     .tng-btn-destructive:hover:not(:disabled) { background:#cc5555; border-color:#cc5555; }
-                    .tng-btn-inline:hover:not(:disabled) { background:#252535; border-color:#6699ff; } /* Inline button specific hover */
+                    .tng-btn-inline:hover:not(:disabled) { background:#252535; border-color:#6699ff; }
                 }
             `);
     }
@@ -692,6 +682,10 @@
       this.internalState = [];
       this.filterDays = 0;
       this.portletLink = null;
+
+      // Store initial state to fix TOCTOU vulnerability via optimistic locking
+      this.initialWikitext = "";
+      this.initialBaseTimestamp = "";
     }
 
     async initialise() {
@@ -706,6 +700,10 @@
         ]);
 
         if (!source.text) return;
+
+        // Cache the initial state to prevent edit conflicts and text mangling
+        this.initialWikitext = source.text;
+        this.initialBaseTimestamp = source.baseTimestamp;
 
         this.threads = WikitextParser.dissectThreads(source.text);
         this.updatePortletLabel();
@@ -764,7 +762,7 @@
         if (!threadItem || heading.querySelector(".tng-btn-inline")) return;
 
         const inlineBtn = document.createElement("button");
-        inlineBtn.className = "tng-btn tng-btn-inline"; // Use new Tengu inline button class
+        inlineBtn.className = "tng-btn tng-btn-inline";
         inlineBtn.textContent = "📜";
         inlineBtn.title = "Archive with Kiroku Hokan-ki";
 
@@ -904,7 +902,6 @@
         interfaceWrapper.querySelector("#ta-load-ts-btn");
       const filterDropdown = interfaceWrapper.querySelector("#ta-filter-sel");
 
-      // Update the "Scan timestamps" button to use tng-btn tng-btn-quiet class
       fetchTimestampsBtn.className = "tng-btn tng-btn-quiet";
 
       const quantitativeFooterInfo = document.createElement("div");
@@ -916,7 +913,7 @@
 
       const submitBatchBtn = ArchiveUIManager.generateButton(
         "Archive selected with Kiroku Hokan-ki",
-        "mw-ui-progressive", // This will be mapped to tng-btn-primary
+        "mw-ui-progressive",
         () => this.triggerBatchExecutionFlow(tbody),
         operationalFooterRight,
       );
@@ -1064,11 +1061,9 @@
             const relativeTimeStr = WikitextParser.getRelativeTimeAgo(
               item.timestamp,
             );
-            // Restored standard .toISOString() parsing behaviour for absolute compliance with UTC timelines.
             const isoDateStr = item.timestamp.toISOString().slice(0, 10);
             isoDateDisplay = `${isoDateStr} (${relativeTimeStr})`;
           } else {
-            // Timestamp scan ran but no signature was detected in this thread.
             isoDateDisplay = `<span style="color:#a2a9b1" title="No timestamp signature was detected in this thread">No signature found</span>`;
           }
         }
@@ -1153,13 +1148,13 @@
 
       const cancelBtn = ArchiveUIManager.generateButton(
         "Cancel",
-        "mw-ui-quiet", // This will be mapped to tng-btn-quiet
+        "mw-ui-quiet",
         () => overlay.closeHandler(),
         functionalFooterRight,
       );
       const confirmBtn = ArchiveUIManager.generateButton(
         "Confirm archive",
-        "mw-ui-progressive", // This will be mapped to tng-btn-primary
+        "mw-ui-progressive",
         async () => {
           confirmBtn.disabled = true;
           cancelBtn.disabled = true;
@@ -1174,11 +1169,9 @@
           });
 
           try {
-            const actualSourcePayload =
-              await this.apiService.getPageSourceData();
-            let globalWikitextBuffer = actualSourcePayload.text;
-            const operationalBaseTimestamp = actualSourcePayload.baseTimestamp;
-
+            // Apply Optimistic Locking: Use the initially loaded text and timestamp
+            let globalWikitextBuffer = this.initialWikitext;
+            const operationalBaseTimestamp = this.initialBaseTimestamp;
             const processingLogsSuccessful = [];
 
             for (const [archiveSubpagePath, itemsArray] of mappingBatches) {
@@ -1326,13 +1319,13 @@
 
         const singleCancelBtn = ArchiveUIManager.generateButton(
           "Cancel",
-          "mw-ui-quiet", // This will be mapped to tng-btn-quiet
+          "mw-ui-quiet",
           () => overlay.closeHandler(),
           UIControlsFooterRight,
         );
         const singleConfirmBtn = ArchiveUIManager.generateButton(
           "Archive with Kiroku Hokan-ki",
-          "mw-ui-progressive", // This will be mapped to tng-btn-primary
+          "mw-ui-progressive",
           async () => {
             singleConfirmBtn.disabled = true;
             singleCancelBtn.disabled = true;
@@ -1343,10 +1336,9 @@
             singleTerminalNode.textContent = "Saving section to archive...";
 
             try {
-              const pageSourcePayload =
-                await this.apiService.getPageSourceData();
-              let sourceWikitext = pageSourcePayload.text;
-              const currentBaseTimestamp = pageSourcePayload.baseTimestamp;
+              // Apply Optimistic Locking: Use the initially loaded text and timestamp
+              let sourceWikitext = this.initialWikitext;
+              const currentBaseTimestamp = this.initialBaseTimestamp;
 
               const destinationArchivePage =
                 this.getArchiveDestinationPath(systemSelectedYear);

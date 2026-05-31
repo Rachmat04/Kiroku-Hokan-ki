@@ -1,3 +1,21 @@
+## v2.6.0
+
+### Added
+
+* Added state caching for the original page revision and wikitext buffer during initialisation, ensuring archive operations are performed against the exact content that was originally loaded.
+
+### Fixed
+
+* Fixed a Time-of-Check to Time-of-Use (TOCTOU) issue that could occur if a talk page was modified while the archive dialog remained open.
+* Archive operations now rely on the original revision state, allowing the MediaWiki API to correctly detect and reject conflicting edits through standard edit conflict protection.
+* Hardened discussion header parsing to ignore empty or whitespace-only section headers, preventing unrelated discussions from being merged incorrectly.
+
+### Improved
+
+* Improved overall archive reliability by preventing string index calculations from being applied to changed page content.
+* Reviewed interface labels, table headers, buttons, messages, and comments for consistent sentence case.
+* Standardised en-GB spelling throughout the gadget, including terms such as "initialise", "optimise", and "authorised".
+
 ## v2.5.4
 
 ### Fixed
