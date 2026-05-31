@@ -1,7 +1,7 @@
 /**
  * ============================================================================
- * KIROKU HŌKAN-KI — 記録保管機
- * Version 2.5.2
+ * Kiroku Hōkan-ki — 記録保管機
+ * Version 2.5.4
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -13,7 +13,6 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
- *
  * ============================================================================
  */
 // <nowiki>
@@ -200,8 +199,8 @@
       const page = response.query.pages[0];
       const primaryContent = page.revisions?.[0]?.content || "";
       const formattedPayload = primaryContent
-        ? `${primaryContent.trim()}\\n\\n${threadsWikitext.trim()}\\n`
-        : `${threadsWikitext.trim()}\\n`;
+        ? `${primaryContent.trim()}\n\n${threadsWikitext.trim()}\n`
+        : `${threadsWikitext.trim()}\n`;
 
       return this.api.postWithToken("csrf", {
         action: "edit",
@@ -327,7 +326,7 @@
   // ============================================================================
   class WikitextParser {
     static stripWikilinks(headingTitle) {
-      let cleared = headingTitle.replace(/\[\[([^|]+)\|([^\]]+)\]\]/g, "$2");
+      let cleared = headingTitle.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, "$2");
       cleared = cleared.replace(/\[\[([^\]]+)\]\]/g, (_match, target) => {
         const elements = target.split(/[:/]/);
         return elements[elements.length - 1].trim();
@@ -383,20 +382,28 @@
         },
         {
           id: "global-dmy-signature",
-          re: /(?:(\d{1,2})[.:](\d{2}),\s+)?(\d{1,2})[\s\u200E\u200F.\u00A0]+(\p{L}+)[\s\u200E\u200F.\u00A0]+(\d{4})\b/gu,
+          re: /(?:(\d{1,2})[.:](\d{2}),\s+)?(\d{1,2})[\s\u200E\u200F\u00A0]+(\p{L}+(?:[\s\u00A0]+\p{L}+)*\.?)[\s\u200E\u200F\u00A0]+(\d{4})(?:[\s,]+(\d{1,2})[.:](\d{2}))?\b/gu,
           extract: (m) => {
-            const targetMonth = monthMap[m[4].toLowerCase().replace(".", "")];
+            const rawMonth = m[4].toLowerCase().replace(/\./g, "").trim();
+            const targetMonth = monthMap[rawMonth];
             if (!targetMonth) return null;
-            return [+m[5], targetMonth, +m[3], +(m[1] || 0), +(m[2] || 0)];
+
+            const hr = +(m[1] || m[6] || 0);
+            const mn = +(m[2] || m[7] || 0);
+            return [+m[5], targetMonth, +m[3], hr, mn];
           },
         },
         {
           id: "global-mdy-signature",
-          re: /\b(\p{L}+)[\s\u200E\u200F\u00A0]+(\d{1,2}),\s+(\d{4})(?:,\s*(\d{1,2})[.:](\d{2}))?/gu,
+          re: /\b(\p{L}+(?:[\s\u00A0]+\p{L}+)*\.?)[\s\u200E\u200F\u00A0]+(\d{1,2}),\s+(\d{4})(?:[\s,]+(\d{1,2})[.:](\d{2}))?\b/gu,
           extract: (m) => {
-            const targetMonth = monthMap[m[1].toLowerCase().replace(".", "")];
+            const rawMonth = m[1].toLowerCase().replace(/\./g, "").trim();
+            const targetMonth = monthMap[rawMonth];
             if (!targetMonth) return null;
-            return [+m[3], targetMonth, +m[2], +(m[4] || 0), +(m[5] || 0)];
+
+            const hr = +(m[4] || 0);
+            const mn = +(m[5] || 0);
+            return [+m[3], targetMonth, +m[2], hr, mn];
           },
         },
       ];
@@ -413,8 +420,7 @@
           if (fields) {
             const [yr, mo, dy, hr, mn] = fields;
 
-            // Reverted back to using unified UTC construction to remain in sync
-            // with generic MediaWiki server setups.
+            // Using unified UTC construction to remain in sync with generic MediaWiki server setups.
             const baselineCandidate = new Date(
               Date.UTC(yr, mo - 1, dy, hr, mn),
             );
@@ -465,7 +471,7 @@
   }
 
   // ============================================================================
-  // [MODULE 05] USER INTERFACE DIALOG MANAGER
+  // [MODULE 05] USER INTERFACE DIALOGUE MANAGER
   // ============================================================================
   class ArchiveUIManager {
     constructor() {
@@ -713,7 +719,11 @@
     }
 
     getArchiveDestinationPath(year) {
-      return `${mwConfig.wgPageName.replace(/_/g, " ")}/${this.archiveSubpage}/${year}`;
+      const pageTitle =
+        mwConfig.wgFormattedNamespaces[mwConfig.wgNamespaceNumber] +
+        ":" +
+        mwConfig.wgTitle;
+      return `${pageTitle}/${this.archiveSubpage}/${year}`;
     }
 
     renderSystemPortlets() {
@@ -1054,11 +1064,12 @@
             const relativeTimeStr = WikitextParser.getRelativeTimeAgo(
               item.timestamp,
             );
-            // Restored standard .toISOString() parsing behavior for absolute compliance with UTC timelines.
+            // Restored standard .toISOString() parsing behaviour for absolute compliance with UTC timelines.
             const isoDateStr = item.timestamp.toISOString().slice(0, 10);
             isoDateDisplay = `${isoDateStr} (${relativeTimeStr})`;
           } else {
-            isoDateDisplay = "Not found";
+            // Timestamp scan ran but no signature was detected in this thread.
+            isoDateDisplay = `<span style="color:#a2a9b1" title="No timestamp signature was detected in this thread">No signature found</span>`;
           }
         }
 
@@ -1175,7 +1186,7 @@
 
               const mergedWikitextPayload = itemsArray
                 .map((i) => i.thread.content.trim())
-                .join("\\n\\n");
+                .join("\n\n");
               const targetSummaryDescription = `Archiving discussions to subpage (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
 
               await this.apiService.saveToArchiveTarget(

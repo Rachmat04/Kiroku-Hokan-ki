@@ -1,3 +1,28 @@
+## v2.5.4
+
+### Fixed
+
+* Improved date parsing to correctly recognise month names containing spaces and abbreviated month names with trailing full stops.
+* Fixed chronological sorting by correctly parsing timestamps that appear after date signatures.
+* Corrected wikilink stripping behaviour to prevent complex file descriptor links from being parsed incorrectly.
+* Replaced escaped line break sequences with actual line breaks in archive output and batch execution messages, preventing formatting issues on wiki pages.
+* Replaced manual page title reconstruction with MediaWiki's native namespace and title handling for improved reliability.
+
+### Improved
+
+* Enhanced month name sanitisation before matching against localisation maps, improving compatibility with a wider range of signature formats.
+* Improved compatibility with multilingual and localised date formats.
+* Reviewed interface text and comments to ensure consistent sentence case and en-GB spelling throughout the gadget.
+
+## v2.5.3
+
+### Fixed
+
+* Improved the display of threads without detected timestamp signatures in scan results.
+* Replaced the plain "Not found" status with a styled "No signature found" indicator for consistency with the single-thread archive dialog.
+* Added a tooltip explaining that no timestamp signature was detected in the thread.
+* Applied the same muted visual styling used by the pre-scan "Not scanned" state to improve interface consistency.
+
 ## v2.5.2
 
 ### Changed
