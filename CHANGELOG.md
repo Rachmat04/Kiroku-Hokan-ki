@@ -1,3 +1,20 @@
+## 2.7.1
+
+### Changed
+- Version bump to 2.7.1 for UI refinements
+- Reduced `.ta-col-ts` (Last active) column width from 200px to 110px
+- Adjusted `.tng-btn-inline` sizing:
+  - font-size: 0.8em → 0.72em
+  - padding: 1px 4px → 0 4px
+  - margin-left: 8px → 6px
+
+### Fixed
+- Normalised "e-mail" to "email" in the error parser
+
+### Improved
+- Standardised interface text, labels, and comments to sentence case and en-GB spelling
+- Improved layout spacing in discussion table UI
+
 ## v2.7.0
 
 ### Added

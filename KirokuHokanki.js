@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.7.0
+ * Version 2.7.1
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -117,7 +117,7 @@
       "abusefilter-disallowed": "The edit was blocked by an abuse filter rule.",
       "abusefilter-warning":
         "An abuse filter warning was triggered. The edit was not saved.",
-      confirmemail: "You must confirm your e-mail address before editing.",
+      confirmemail: "You must confirm your email address before editing.",
       blocked_range: "Your IP address range has been blocked from editing.",
     };
 
@@ -568,9 +568,9 @@
                 
                 /* Custom inline button for Kiroku Hokan-ki */
                 .tng-btn-inline {
-                    margin-left: 8px;
-                    padding: 1px 4px;
-                    font-size: 0.8em;
+                    margin-left: 6px;
+                    padding: 0 4px;
+                    font-size: 0.72em;
                     line-height: 1.4;
                     border: 1px solid #a2a9b1;
                     border-radius: 3px;
@@ -601,7 +601,7 @@
                 .ta-filter-age select { padding: 2px 6px; border: 1px solid #a2a9b1; border-radius: 3px; font-size: 0.95em; }
                 .ta-thread-table { width: 100%; border-collapse: collapse; font-size: 0.88em; table-layout: fixed; min-width: 700px; }
                 .ta-col-check  { width: 36px; }
-                .ta-col-ts     { width: 200px; }
+                .ta-col-ts     { width: 110px; }
                 .ta-col-year   { width: 82px; }
                 .ta-col-dest   { width: 190px; }
                 .ta-col-status { width: 96px; }
@@ -1314,15 +1314,15 @@
 
         localRenderRoutine();
 
-        const UIControlsFooterRight = document.createElement("div");
-        UIControlsFooterRight.className = "ta-dialog-footer-right";
-        footer.appendChild(UIControlsFooterRight);
+        const uiControlsFooterRight = document.createElement("div");
+        uiControlsFooterRight.className = "ta-dialog-footer-right";
+        footer.appendChild(uiControlsFooterRight);
 
         const singleCancelBtn = ArchiveUIManager.generateButton(
           "Cancel",
           "mw-ui-quiet",
           () => overlay.closeHandler(),
-          UIControlsFooterRight,
+          uiControlsFooterRight,
         );
         const singleConfirmBtn = ArchiveUIManager.generateButton(
           "Archive with Kiroku Hokan-ki",
@@ -1378,7 +1378,7 @@
               singleCancelBtn.disabled = false;
             }
           },
-          UIControlsFooterRight,
+          uiControlsFooterRight,
         );
       } catch (parsingFailure) {
         workzone.textContent = "Could not parse this section.";
