@@ -14,48 +14,6 @@
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
  *
- * CHANGELOG v2.5.2:
- * - Changed: Refined dialogue and toolbar button styles to strictly align with the
- *   Tengu UI design system, adopting 'tng-btn' base and variant classes
- *   (tng-btn-primary, tng-btn-quiet, tng-btn-destructive) for full visual and
- *   naming consistency. Introduced 'tng-btn-inline' for specific smaller buttons.
- *
- * CHANGELOG v2.5.1:
- * - Changed: Adapted dialogue and toolbar buttons to use the Tengu UI design system,
- *   replacing MediaWiki's `mw-ui-button` classes with `Kiroku Hokan-ki`'s
- *   self-contained `ta-btn-primary` and `ta-btn-quiet` styles for visual consistency.
- *
- * CHANGELOG v2.5.0:
- * - Changed: Replaced MediaWiki mw-ui-button dialogue buttons with a
- *   self-contained Tengu-style button system (ta-btn-primary, ta-btn-quiet,
- *   ta-btn-destructive). Appearance is now independent of the wiki stylesheet
- *   and visually consistent across all dialogue footers and the scan toolbar.
- *
- * CHANGELOG v2.4.0:
- * - Added: classifyApiError() utility maps known MediaWiki API error codes
- *   (e.g. blocked, protectedpage, readonly, editconflict) to plain-English
- *   messages displayed in both the dialogue box and the browser console.
- * - Changed: Batch and single-archive error handlers now show the specific
- *   failure reason in the progress log instead of a generic fallback message.
- * - Changed: Console error messages now include the classified error code as
- *   part of the log label for easier filtering.
- *
- * CHANGELOG v2.3.0:
- * - Added: The gadget portlet now appears on any page, with a caveat notice for
- *   unauthorised contexts.
- * - Changed: Consistently applied sentence case and en-GB spelling across all
- *   interfaces and comments.
- *
- * CHANGELOG v2.2.0:
- * - Changed: Allowed table header text to wrap onto multiple lines to ensure
- *   readability on constrained or smaller screen dimensions.
- * - Changed: Formally bumped minor version to reflect interface enhancements.
- *
- * CHANGELOG v2.1.2:
- * - Added: Visual override indicator for manually selected years in the
- *   single-thread archive dialog.
- * - Changed: Reduced the vertical height of the single-thread archive dialog
- *   for better screen real-estate utilisation.
  * ============================================================================
  */
 // <nowiki>
