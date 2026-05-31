@@ -1,3 +1,21 @@
+## v2.7.0
+
+### Added
+
+* Added hover tooltips for relative timestamps in both table and single-archive views.
+* Added visual affordance for interactive dates using `cursor: help` and a dotted underline indicator.
+
+### Changed
+
+* Updated `renderOptimisedTableRows()` to separate ISO date display (visible text) from relative time (tooltip content).
+* Updated `openSingleArchivePanel()` to move relative time strings into the `title` attribute of the rendered date element.
+* Improved date display consistency across table and single-thread archive interfaces.
+
+### Improved
+
+* Enhanced discoverability of relative timestamps by making hover behaviour visually explicit.
+* Verified existing interface text for consistent en-GB spelling and sentence case; no additional linguistic changes required.
+
 ## v2.6.0
 
 ### Added

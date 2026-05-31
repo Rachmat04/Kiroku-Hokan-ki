@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.6.0
+ * Version 2.7.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -11,7 +11,7 @@
  * KEY FEATURES:
  * - Automatically splits talk pages into individual threads using level-2 headings.
  * - Parses signature timestamps dynamically across 400+ wiki languages.
- * - Displays friendly relative time strings (e.g., "~2 weeks ago") for active dates.
+ * - Displays friendly relative time strings (e.g., "~2 weeks ago") as hoverable tooltips.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
  * ============================================================================
  */
@@ -1062,7 +1062,7 @@
               item.timestamp,
             );
             const isoDateStr = item.timestamp.toISOString().slice(0, 10);
-            isoDateDisplay = `${isoDateStr} (${relativeTimeStr})`;
+            isoDateDisplay = `<span title="${mw.html.escape(relativeTimeStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;">${mw.html.escape(isoDateStr)}</span>`;
           } else {
             isoDateDisplay = `<span style="color:#a2a9b1" title="No timestamp signature was detected in this thread">No signature found</span>`;
           }
@@ -1265,13 +1265,14 @@
           : new Date().getUTCFullYear();
 
         let systemSelectedYear = resolvedYear;
-        const relativeTimeStr = activityDateResolved
-          ? ` (${WikitextParser.getRelativeTimeAgo(activityDateResolved)})`
-          : "";
+        let signatureDisplayHtml = `<b><span style="color:#a2a9b1">No signature found</span></b>`;
 
-        const isoDateString = activityDateResolved
-          ? `${activityDateResolved.toISOString().slice(0, 10)}${relativeTimeStr}`
-          : "No signature found";
+        if (activityDateResolved) {
+          const relativeTimeStr =
+            WikitextParser.getRelativeTimeAgo(activityDateResolved);
+          const isoDateString = activityDateResolved.toISOString().slice(0, 10);
+          signatureDisplayHtml = `<b title="${mw.html.escape(relativeTimeStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;">${mw.html.escape(isoDateString)}</b>`;
+        }
 
         const localRenderRoutine = () => {
           const destinationPathString =
@@ -1283,7 +1284,7 @@
             : "ta-year-sel";
 
           workzone.innerHTML = `
-                        <p>Last active signature: <b>${mw.html.escape(isoDateString)}</b></p>
+                        <p>Last active signature: ${signatureDisplayHtml}</p>
                         <div class="ta-year-row">
                             <label for="ta-single-year-select">Archive year:</label>
                             <select id="ta-single-year-select" class="${selectStyleClass}"></select>
