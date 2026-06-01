@@ -13,24 +13,6 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") as hoverable tooltips.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
- *
- * CHANGES IN 2.8.0:
- * - Extracted shared constants: EDIT_SUMMARY_ATTRIBUTION, YEAR_RANGE,
- *   MS_PER_DAY. Hardcoded values no longer scattered across the codebase.
- * - Fixed race condition in saveToArchiveTarget: replaced the read-modify-write
- *   pattern with appendtext, which is atomic and requires no prior page fetch.
- * - Replaced O(n) indexOf lookups in LocalisationEngine with a pre-built Map,
- *   reducing complexity from O(n²) to O(n) across all language fetch loops.
- * - Added WikitextParser.buildDateDisplayHtml and WikitextParser.buildYearOptionHtml
- *   to remove duplicated date-display and year-dropdown logic.
- * - instantiateDialog now creates and returns a footerRight element, removing
- *   four instances of identical footer setup boilerplate in callers.
- * - closeHandler is now returned as a plain close() function rather than
- *   assigned as a custom property on the overlay DOM node.
- * - Merged displayCaveatNotice and displayEmptyWarningNotice into _showInfoNotice.
- * - All edit summaries now use ArchiveConfig.EDIT_SUMMARY_ATTRIBUTION.
- * - generateButton replaced if/else chain with a lookup map.
- * - Updated all section comments and module headers to sentence case.
  * ============================================================================
  */
 // <nowiki>
