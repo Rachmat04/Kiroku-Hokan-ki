@@ -1,3 +1,29 @@
+## 2.8.0
+
+### Changed
+- Replaced `indexOf()` lookups in `LocalisationEngine` with a pre-built `Map` for O(1) key resolution
+- Refactored modal stack handling to store close functions instead of overlay elements
+- Renamed methods for clarity:
+  - `renderOptimisedTableRows()` → `renderTableRows()`
+  - `optimiseFooterCounters()` → `updateFooterCounters()`
+- Replaced button variant `if/else` chain with a lookup map
+
+### Fixed
+- Eliminated a race condition when archiving by replacing fetch–merge–write logic with a single atomic `appendtext` API call
+
+### Improved
+- Extracted `WikitextParser.buildDateDisplayHtml()` as the single source of truth for tooltip-enabled date rendering
+- Extracted `WikitextParser.buildYearOptionHtml()` and reduced repeated year option generation
+- Simplified dialog footer creation by returning `footerRight` directly and removing duplicated setup code
+- Centralised edit summary attribution via `ArchiveConfig.EDIT_SUMMARY_ATTRIBUTION`
+- Added `ArchiveConfig.YEAR_RANGE` to replace duplicated constants
+- Consolidated notice rendering through a shared `_showInfoNotice()` helper
+- Reduced duplicated logic and improved maintainability across archive workflows
+
+### Added
+- `ArchiveConfig.YEAR_RANGE` configuration constant
+- `ArchiveConfig.EDIT_SUMMARY_ATTRIBUTION` shared attribution constant
+
 ## 2.7.1
 
 ### Changed

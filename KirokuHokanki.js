@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.7.1
+ * Version 2.8.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -13,6 +13,24 @@
  * - Parses signature timestamps dynamically across 400+ wiki languages.
  * - Displays friendly relative time strings (e.g., "~2 weeks ago") as hoverable tooltips.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
+ *
+ * CHANGES IN 2.8.0:
+ * - Extracted shared constants: EDIT_SUMMARY_ATTRIBUTION, YEAR_RANGE,
+ *   MS_PER_DAY. Hardcoded values no longer scattered across the codebase.
+ * - Fixed race condition in saveToArchiveTarget: replaced the read-modify-write
+ *   pattern with appendtext, which is atomic and requires no prior page fetch.
+ * - Replaced O(n) indexOf lookups in LocalisationEngine with a pre-built Map,
+ *   reducing complexity from O(n²) to O(n) across all language fetch loops.
+ * - Added WikitextParser.buildDateDisplayHtml and WikitextParser.buildYearOptionHtml
+ *   to remove duplicated date-display and year-dropdown logic.
+ * - instantiateDialog now creates and returns a footerRight element, removing
+ *   four instances of identical footer setup boilerplate in callers.
+ * - closeHandler is now returned as a plain close() function rather than
+ *   assigned as a custom property on the overlay DOM node.
+ * - Merged displayCaveatNotice and displayEmptyWarningNotice into _showInfoNotice.
+ * - All edit summaries now use ArchiveConfig.EDIT_SUMMARY_ATTRIBUTION.
+ * - generateButton replaced if/else chain with a lookup map.
+ * - Updated all section comments and module headers to sentence case.
  * ============================================================================
  */
 // <nowiki>
@@ -21,15 +39,29 @@
   "use strict";
 
   // ============================================================================
-  // [MODULE 01] GLOBAL APP CONFIGURATION
+  // [Module 01] Global app configuration
   // ============================================================================
   class ArchiveConfig {
     static get ALLOWED_USER() {
       return "Rachmat04";
     }
+
     static get TARGET_NAMESPACE() {
-      return 3;
-    } // User talk namespace
+      return 3; // User talk namespace
+    }
+
+    /** Attribution string appended to every edit summary. */
+    static get EDIT_SUMMARY_ATTRIBUTION() {
+      return `(via [[w:id:Pengguna:${ArchiveConfig.ALLOWED_USER}/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
+    }
+
+    /**
+     * Number of years below the current year offered in archive year dropdowns.
+     * The upper bound is always current year + 1.
+     */
+    static get YEAR_RANGE() {
+      return 15;
+    }
 
     /**
      * Dynamically detects the active wiki language environments at runtime.
@@ -90,7 +122,7 @@
     isAllowedUser && isTargetNamespace && isTargetPage && isValidAction;
 
   // ============================================================================
-  // [UTILITY] API ERROR CLASSIFIER
+  // [Utility] API error classifier
   // ============================================================================
   /**
    * Classifies a caught MediaWiki API error into a structured result containing
@@ -145,7 +177,7 @@
   }
 
   // ============================================================================
-  // [MODULE 02] MEDIAWIKI API SERVICE LAYER
+  // [Module 02] MediaWiki API service layer
   // ============================================================================
   class WikiApiService {
     constructor() {
@@ -179,25 +211,20 @@
       return response.query?.allmessages || [];
     }
 
+    /**
+     * Appends threadsWikitext to the archive subpage.
+     *
+     * Previously this method read the archive page first, then wrote the full
+     * merged text back — a read-modify-write pattern with a race condition.
+     * Using appendtext removes the fetch entirely: the MediaWiki API appends
+     * atomically and creates the page automatically if it does not yet exist.
+     */
     async saveToArchiveTarget(archiveTitle, threadsWikitext, summary) {
-      const response = await this.api.get({
-        action: "query",
-        prop: "revisions",
-        rvprop: "content",
-        titles: archiveTitle,
-        formatversion: 2,
-      });
-      const page = response.query.pages[0];
-      const primaryContent = page.revisions?.[0]?.content || "";
-      const formattedPayload = primaryContent
-        ? `${primaryContent.trim()}\n\n${threadsWikitext.trim()}\n`
-        : `${threadsWikitext.trim()}\n`;
-
       return this.api.postWithToken("csrf", {
         action: "edit",
         title: archiveTitle,
-        text: formattedPayload,
-        summary: summary,
+        appendtext: `\n\n${threadsWikitext.trim()}\n`,
+        summary,
       });
     }
 
@@ -206,14 +233,14 @@
         action: "edit",
         title: this.pageName,
         text: dynamicContent,
-        summary: summary,
+        summary,
         basetimestamp: baseTimestamp,
       });
     }
   }
 
   // ============================================================================
-  // [MODULE 03] DYNAMIC LOCALISATION ENGINE
+  // [Module 03] Dynamic localisation engine
   // ============================================================================
   class LocalisationEngine {
     constructor(apiService) {
@@ -261,6 +288,10 @@
         "dec",
       ];
 
+      // Pre-build a Map for O(1) key-to-index lookups, avoiding an O(n) indexOf
+      // call inside the forEach loop for every message across every language.
+      const keyIndexMap = new Map(primaryMessageKeys.map((k, i) => [k, i]));
+
       const fetchingPromises = ArchiveConfig.TARGET_LANGUAGES.map(
         async (langCode) => {
           try {
@@ -269,12 +300,11 @@
               primaryMessageKeys,
             );
             messages.forEach((msg) => {
-              if (msg.content && !msg.missing) {
-                const cleanTerm = msg.content.toLowerCase().trim();
-                const normalisedIndex =
-                  primaryMessageKeys.indexOf(msg.name) % 12;
-                this.monthMap[cleanTerm] = normalisedIndex + 1;
-              }
+              if (!msg.content || msg.missing) return;
+              const keyIndex = keyIndexMap.get(msg.name);
+              if (keyIndex === undefined) return;
+              const cleanTerm = msg.content.toLowerCase().trim();
+              this.monthMap[cleanTerm] = (keyIndex % 12) + 1;
             });
           } catch (err) {
             console.warn(
@@ -313,7 +343,7 @@
   }
 
   // ============================================================================
-  // [MODULE 04] WIKITEXT COMPONENT PARSER
+  // [Module 04] Wikitext component parser
   // ============================================================================
   class WikitextParser {
     static stripWikilinks(headingTitle) {
@@ -412,18 +442,14 @@
           if (fields) {
             const [yr, mo, dy, hr, mn] = fields;
 
-            // Retaining unified UTC construction. This allows exact preservation of
-            // the string year from the wikitext without local timezone shifts affecting the year folder logic.
-            const baselineCandidate = new Date(
-              Date.UTC(yr, mo - 1, dy, hr, mn),
-            );
+            // Retain unified UTC construction. This preserves the string year
+            // from the wikitext without local timezone shifts affecting the
+            // year folder logic.
+            const candidate = new Date(Date.UTC(yr, mo - 1, dy, hr, mn));
 
-            if (!isNaN(baselineCandidate.getTime())) {
-              if (
-                !newestResolvedDate ||
-                baselineCandidate > newestResolvedDate
-              ) {
-                newestResolvedDate = baselineCandidate;
+            if (!isNaN(candidate.getTime())) {
+              if (!newestResolvedDate || candidate > newestResolvedDate) {
+                newestResolvedDate = candidate;
               }
             }
           }
@@ -433,19 +459,17 @@
       return newestResolvedDate;
     }
 
-    /**
-     * Calculates the approximate human-readable relative time string.
-     */
+    /** Calculates the approximate human-readable relative time string. */
     static getRelativeTimeAgo(date) {
       if (!date) return "";
+      const MS_PER_DAY = 86400000;
       const diffMs = Date.now() - date.getTime();
 
-      // Guard against future timestamps resulting in negative times
-      if (diffMs < 0) return `just now`;
+      // Guard against future timestamps resulting in negative times.
+      if (diffMs < 0) return "just now";
+      if (diffMs < MS_PER_DAY) return "today";
 
-      if (diffMs < 86400000) return `today`;
-
-      const diffDays = Math.floor(diffMs / 86400000);
+      const diffDays = Math.floor(diffMs / MS_PER_DAY);
       if (diffDays < 7)
         return `~${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
 
@@ -460,10 +484,42 @@
       const diffYears = Math.floor(diffDays / 365.25);
       return `~${diffYears} year${diffYears !== 1 ? "s" : ""} ago`;
     }
+
+    /**
+     * Builds the HTML for a timestamp table cell, including a relative-time
+     * tooltip. Returns a placeholder when the timestamp is unavailable.
+     *
+     * @param {Date|null} timestamp
+     * @param {boolean}   tsLoaded  – false when no scan has been attempted yet
+     */
+    static buildDateDisplayHtml(timestamp, tsLoaded = true) {
+      if (!tsLoaded) {
+        return `<span style="color:#a2a9b1">Not scanned</span>`;
+      }
+      if (!timestamp) {
+        return `<span style="color:#a2a9b1" title="No timestamp signature was detected in this thread">No signature found</span>`;
+      }
+      const relStr = WikitextParser.getRelativeTimeAgo(timestamp);
+      const isoStr = timestamp.toISOString().slice(0, 10);
+      return `<span title="${mw.html.escape(relStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;">${mw.html.escape(isoStr)}</span>`;
+    }
+
+    /**
+     * Builds the <option> elements for a year dropdown.
+     * Years run from (current + 1) down to (current – YEAR_RANGE).
+     */
+    static buildYearOptionHtml() {
+      const current = new Date().getUTCFullYear();
+      let html = "";
+      for (let y = current + 1; y >= current - ArchiveConfig.YEAR_RANGE; y--) {
+        html += `<option value="${y}">${y}</option>`;
+      }
+      return html;
+    }
   }
 
   // ============================================================================
-  // [MODULE 05] USER INTERFACE DIALOGUE MANAGER
+  // [Module 05] User interface dialogue manager
   // ============================================================================
   class ArchiveUIManager {
     constructor() {
@@ -475,25 +531,36 @@
     registerGlobalEscapes() {
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && this.modalStack.length > 0) {
-          this.modalStack[this.modalStack.length - 1].closeHandler();
+          // Modal stack stores close functions, not overlay elements.
+          this.modalStack[this.modalStack.length - 1]();
         }
       });
     }
 
+    /**
+     * Creates and mounts a modal dialogue.
+     *
+     * Returns { overlay, body, footer, footerRight, close }.
+     * - close()     — call to dismiss the dialogue programmatically.
+     * - footerRight — pre-created right-aligned button container inside footer.
+     *   Callers that also need a left-side footer element should create one and
+     *   use footer.insertBefore(leftEl, footerRight).
+     */
     instantiateDialog(options) {
       const overlay = document.createElement("div");
       overlay.className = "ta-overlay";
       document.body.appendChild(overlay);
 
-      overlay.closeHandler = () => {
+      // close() is a plain function, not a property on the DOM node.
+      const close = () => {
         overlay.remove();
-        this.modalStack = this.modalStack.filter((m) => m !== overlay);
+        this.modalStack = this.modalStack.filter((fn) => fn !== close);
         if (options.onClose) options.onClose();
       };
-      this.modalStack.push(overlay);
+      this.modalStack.push(close);
 
       overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) overlay.closeHandler();
+        if (e.target === overlay) close();
       });
 
       const dialogBox = document.createElement("div");
@@ -510,7 +577,7 @@
       const dismissButton = document.createElement("button");
       dismissButton.className = "ta-dialog-close";
       dismissButton.textContent = "✕";
-      dismissButton.onclick = () => overlay.closeHandler();
+      dismissButton.onclick = close;
 
       headerNode.append(internalTitle, dismissButton);
 
@@ -520,25 +587,39 @@
       const footerNode = document.createElement("div");
       footerNode.className = "ta-dialog-footer";
 
+      // Pre-create the right-side button container so callers don't have to.
+      const footerRight = document.createElement("div");
+      footerRight.className = "ta-dialog-footer-right";
+      footerNode.appendChild(footerRight);
+
       dialogBox.append(headerNode, bodyNode, footerNode);
       overlay.appendChild(dialogBox);
 
-      return { overlay, body: bodyNode, footer: footerNode };
+      return {
+        overlay,
+        body: bodyNode,
+        footer: footerNode,
+        footerRight,
+        close,
+      };
     }
 
-    static generateButton(label, styles, interactionEvent, targetParent) {
+    /**
+     * Creates a styled button, appends it to parent, and returns it.
+     * Accepts MediaWiki style class strings as the style parameter.
+     */
+    static generateButton(label, style, interactionEvent, targetParent) {
+      const CLASS_MAP = {
+        "mw-ui-progressive": "tng-btn-primary",
+        "mw-ui-destructive": "tng-btn-destructive",
+        "mw-ui-quiet": "tng-btn-quiet",
+      };
+      const variantClass =
+        Object.entries(CLASS_MAP).find(([k]) => style.includes(k))?.[1] ??
+        "tng-btn-quiet";
+
       const buttonElement = document.createElement("button");
-      let classNames = "tng-btn";
-      if (styles.includes("mw-ui-quiet")) {
-        classNames += " tng-btn-quiet";
-      } else if (styles.includes("mw-ui-progressive")) {
-        classNames += " tng-btn-primary";
-      } else if (styles.includes("mw-ui-destructive")) {
-        classNames += " tng-btn-destructive";
-      } else {
-        classNames += " tng-btn-quiet";
-      }
-      buttonElement.className = classNames.trim();
+      buttonElement.className = `tng-btn ${variantClass}`;
       buttonElement.textContent = label;
       buttonElement.addEventListener("click", interactionEvent);
       if (targetParent) targetParent.appendChild(buttonElement);
@@ -547,7 +628,7 @@
 
     injectUtilityStyles() {
       mw.util.addCSS(`
-                /* --- Tengu-style Buttons --- */
+                /* --- Tengu-style buttons --- */
                 .tng-btn {
                     display: inline-flex; align-items: center; justify-content: center;
                     padding: 5px 14px; border-radius: 4px; font-size: 0.9em;
@@ -568,12 +649,12 @@
                 
                 /* Custom inline button for Kiroku Hokan-ki */
                 .tng-btn-inline {
-                    margin-left: 6px;
-                    padding: 0 4px;
-                    font-size: 0.72em;
+                    margin-left: 8px;
+                    padding: 2px 6px;
+                    font-size: 0.85em;
                     line-height: 1.4;
                     border: 1px solid #a2a9b1;
-                    border-radius: 3px;
+                    border-radius: 4px;
                     background: none;
                     color: inherit;
                     vertical-align: middle;
@@ -670,7 +751,7 @@
   }
 
   // ============================================================================
-  // [MODULE 06] APPLICATION ORCHESTRATION CONTROLLER
+  // [Module 06] Application orchestration controller
   // ============================================================================
   class GadgetController {
     constructor() {
@@ -683,7 +764,7 @@
       this.filterDays = 0;
       this.portletLink = null;
 
-      // Store initial state to fix TOCTOU vulnerability via optimistic locking
+      // Cache the initial page state to fix TOCTOU via optimistic locking.
       this.initialWikitext = "";
       this.initialBaseTimestamp = "";
     }
@@ -701,7 +782,6 @@
 
         if (!source.text) return;
 
-        // Cache the initial state to prevent edit conflicts and text mangling
         this.initialWikitext = source.text;
         this.initialBaseTimestamp = source.baseTimestamp;
 
@@ -709,10 +789,7 @@
         this.updatePortletLabel();
         this.bindInlineSectionButtons();
       } catch (error) {
-        console.error(
-          "[KirokuHokanki] Initialisation execution failed:",
-          error,
-        );
+        console.error("[KirokuHokanki] Initialisation failed:", error);
       }
     }
 
@@ -778,59 +855,46 @@
       });
     }
 
-    displayCaveatNotice() {
-      const { overlay, body, footer } = this.uiManager.instantiateDialog({
-        title: "Kiroku Hokan-ki",
+    /**
+     * Displays a small informational dialogue with a single Close button.
+     * Used by displayCaveatNotice and displayEmptyWarningNotice to avoid
+     * duplicating the dialogue scaffolding.
+     */
+    _showInfoNotice(title, bodyHtml) {
+      const { body, footerRight, close } = this.uiManager.instantiateDialog({
+        title,
         icon: "📜",
         small: true,
       });
-
-      const paddingContainer = document.createElement("div");
-      paddingContainer.className = "ta-dialog-body-pad";
-      paddingContainer.innerHTML = `
-                <p style="margin:0; font-weight:bold; color:#b00;">Feature restricted</p>
-                <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
-                    This feature can only be used on specific talk pages by authorised users.
-                </p>`;
-      body.appendChild(paddingContainer);
-
-      const rightContainer = document.createElement("div");
-      rightContainer.className = "ta-dialog-footer-right";
-      footer.appendChild(rightContainer);
-
+      const pad = document.createElement("div");
+      pad.className = "ta-dialog-body-pad";
+      pad.innerHTML = bodyHtml;
+      body.appendChild(pad);
       ArchiveUIManager.generateButton(
         "Close",
         "mw-ui-quiet",
-        () => overlay.closeHandler(),
-        rightContainer,
+        close,
+        footerRight,
+      );
+    }
+
+    displayCaveatNotice() {
+      this._showInfoNotice(
+        "Kiroku Hokan-ki",
+        `<p style="margin:0; font-weight:bold; color:#b00;">Feature restricted</p>
+         <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
+           This feature can only be used on specific talk pages by authorised users.
+         </p>`,
       );
     }
 
     displayEmptyWarningNotice() {
-      const { overlay, body, footer } = this.uiManager.instantiateDialog({
-        title: "Kiroku Hokan-ki",
-        icon: "📜",
-        small: true,
-      });
-
-      const paddingContainer = document.createElement("div");
-      paddingContainer.className = "ta-dialog-body-pad";
-      paddingContainer.innerHTML = `
-                <p style="margin:0">No discussions were found on this talk page.</p>
-                <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
-                    Kiroku Hokan-ki only detects sections created with standard level-2 headings (<code>== &hellip; ==</code>).
-                </p>`;
-      body.appendChild(paddingContainer);
-
-      const rightContainer = document.createElement("div");
-      rightContainer.className = "ta-dialog-footer-right";
-      footer.appendChild(rightContainer);
-
-      ArchiveUIManager.generateButton(
-        "Close",
-        "mw-ui-quiet",
-        () => overlay.closeHandler(),
-        rightContainer,
+      this._showInfoNotice(
+        "Kiroku Hokan-ki",
+        `<p style="margin:0">No discussions were found on this talk page.</p>
+         <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
+           Kiroku Hokan-ki only detects sections created with standard level-2 headings (<code>== &hellip; ==</code>).
+         </p>`,
       );
     }
 
@@ -850,10 +914,11 @@
 
       this.filterDays = 0;
 
-      const { body, footer } = this.uiManager.instantiateDialog({
-        title: "Kiroku Hokan-ki — Bulk archive manager",
-        icon: "📜",
-      });
+      const { body, footer, footerRight, close } =
+        this.uiManager.instantiateDialog({
+          title: "Kiroku Hokan-ki — Bulk archive manager",
+          icon: "📜",
+        });
 
       const interfaceWrapper = document.createElement("div");
       interfaceWrapper.innerHTML = `
@@ -904,22 +969,21 @@
 
       fetchTimestampsBtn.className = "tng-btn tng-btn-quiet";
 
-      const quantitativeFooterInfo = document.createElement("div");
-      quantitativeFooterInfo.id = "ta-footer-info";
-      quantitativeFooterInfo.className = "ta-footer-info";
+      const footerInfo = document.createElement("div");
+      footerInfo.id = "ta-footer-info";
+      footerInfo.className = "ta-footer-info";
 
-      const operationalFooterRight = document.createElement("div");
-      operationalFooterRight.className = "ta-dialog-footer-right";
+      // footerRight is already appended to footer by instantiateDialog.
+      // Insert the left-side info label before it.
+      footer.insertBefore(footerInfo, footerRight);
 
       const submitBatchBtn = ArchiveUIManager.generateButton(
         "Archive selected with Kiroku Hokan-ki",
         "mw-ui-progressive",
         () => this.triggerBatchExecutionFlow(tbody),
-        operationalFooterRight,
+        footerRight,
       );
       submitBatchBtn.disabled = true;
-
-      footer.append(quantitativeFooterInfo, operationalFooterRight);
 
       tbody.addEventListener("change", (event) => {
         const historicalRow = event.target.closest("tr");
@@ -937,7 +1001,7 @@
             "ta-selected",
             localStateItem.selected,
           );
-          this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
+          this.updateFooterCounters(submitBatchBtn, footerInfo);
         }
 
         if (event.target.classList.contains("ta-row-year")) {
@@ -966,14 +1030,14 @@
         activeSet.forEach((item) => {
           item.selected = targetState;
         });
-        this.renderOptimisedTableRows(tbody);
-        this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
+        this.renderTableRows(tbody);
+        this.updateFooterCounters(submitBatchBtn, footerInfo);
       });
 
       filterDropdown.addEventListener("change", (event) => {
         this.filterDays = parseInt(event.target.value, 10);
-        this.renderOptimisedTableRows(tbody);
-        this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
+        this.renderTableRows(tbody);
+        this.updateFooterCounters(submitBatchBtn, footerInfo);
       });
 
       fetchTimestampsBtn.addEventListener("click", async () => {
@@ -1005,33 +1069,31 @@
 
         fetchTimestampsBtn.disabled = false;
         fetchTimestampsBtn.textContent = "🔄 Rescan timestamps";
-        this.renderOptimisedTableRows(tbody);
+        this.renderTableRows(tbody);
       });
 
-      this.renderOptimisedTableRows(tbody);
-      this.optimiseFooterCounters(submitBatchBtn, quantitativeFooterInfo);
+      this.renderTableRows(tbody);
+      this.updateFooterCounters(submitBatchBtn, footerInfo);
     }
 
     computeFilteredDataSubset() {
       if (this.filterDays === 0) return this.internalState;
-      const maximumHorizonThreshold = Date.now() - this.filterDays * 86400000;
-      return this.internalState.filter((item) => {
-        return (
+      const MS_PER_DAY = 86400000;
+      const cutoff = Date.now() - this.filterDays * MS_PER_DAY;
+      return this.internalState.filter(
+        (item) =>
           !item.tsLoaded ||
-          (item.timestamp && item.timestamp.getTime() < maximumHorizonThreshold)
-        );
-      });
+          (item.timestamp && item.timestamp.getTime() < cutoff),
+      );
     }
 
-    optimiseFooterCounters(buttonRef, informationRef) {
-      const countedSelections = this.internalState.filter(
-        (i) => i.selected,
-      ).length;
-      informationRef.textContent = `${countedSelections} discussion${countedSelections !== 1 ? "s" : ""} selected for processing`;
-      buttonRef.disabled = countedSelections === 0;
+    updateFooterCounters(buttonRef, infoRef) {
+      const count = this.internalState.filter((i) => i.selected).length;
+      infoRef.textContent = `${count} discussion${count !== 1 ? "s" : ""} selected for processing`;
+      buttonRef.disabled = count === 0;
     }
 
-    renderOptimisedTableRows(tbodyElement) {
+    renderTableRows(tbodyElement) {
       tbodyElement.innerHTML = "";
       const currentSubset = this.computeFilteredDataSubset();
 
@@ -1040,35 +1102,19 @@
         return;
       }
 
-      const currentYearSystem = new Date().getUTCFullYear();
-      let optionDropdownBuffer = "";
-      for (
-        let yearIdx = currentYearSystem + 1;
-        yearIdx >= currentYearSystem - 15;
-        yearIdx--
-      ) {
-        optionDropdownBuffer += `<option value="${yearIdx}">${yearIdx}</option>`;
-      }
+      // Build the year option HTML once per render pass rather than per row.
+      const yearOptionHtml = WikitextParser.buildYearOptionHtml();
 
       currentSubset.forEach((item) => {
         const tr = document.createElement("tr");
         tr.dataset.indexId = item.id;
         if (item.selected) tr.className = "ta-selected";
 
-        let isoDateDisplay = `<span style="color:#a2a9b1">Not scanned</span>`;
-        if (item.tsLoaded) {
-          if (item.timestamp) {
-            const relativeTimeStr = WikitextParser.getRelativeTimeAgo(
-              item.timestamp,
-            );
-            const isoDateStr = item.timestamp.toISOString().slice(0, 10);
-            isoDateDisplay = `<span title="${mw.html.escape(relativeTimeStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;">${mw.html.escape(isoDateStr)}</span>`;
-          } else {
-            isoDateDisplay = `<span style="color:#a2a9b1" title="No timestamp signature was detected in this thread">No signature found</span>`;
-          }
-        }
-
-        const calculatedBadge = this.generateBadgeMarkup(item.status);
+        const isoDateDisplay = WikitextParser.buildDateDisplayHtml(
+          item.timestamp,
+          item.tsLoaded,
+        );
+        const badgeHtml = this.generateBadgeMarkup(item.status);
 
         tr.innerHTML = `
                     <td class="ta-td-check"><input type="checkbox" class="ta-row-chk" ${item.selected ? "checked" : ""}></td>
@@ -1076,11 +1122,11 @@
                     <td class="ta-td-ts">${isoDateDisplay}</td>
                     <td class="ta-td-year">
                         <select class="ta-row-year ${item.yearOverride ? "ta-year-sel ta-year-override" : "ta-year-sel"}">
-                            ${optionDropdownBuffer}
+                            ${yearOptionHtml}
                         </select>
                     </td>
                     <td class="ta-td-dest ta-row-dest">${mw.html.escape(item.archiveTitle)}</td>
-                    <td class="ta-td-status status-container">${calculatedBadge}</td>`;
+                    <td class="ta-td-status status-container">${badgeHtml}</td>`;
 
         tr.querySelector(".ta-row-year").value = item.year;
         tbodyElement.appendChild(tr);
@@ -1100,25 +1146,22 @@
     }
 
     generateBadgeMarkup(status) {
-      const badgeConfigurationMatrix = {
+      const BADGE_MAP = {
         pending: ["ta-badge-pending", "—"],
         loading: ["ta-badge-loading", "⏳ Scanning..."],
         ok: ["ta-badge-ok", "✅ Archived"],
         error: ["ta-badge-error", "❌ Error"],
         skipped: ["ta-badge-skipped", "Skipped"],
       };
-      const [stylingClass, labelText] =
-        badgeConfigurationMatrix[status] || badgeConfigurationMatrix.pending;
+      const [stylingClass, labelText] = BADGE_MAP[status] || BADGE_MAP.pending;
       return `<span class="ta-badge ${stylingClass}">${labelText}</span>`;
     }
 
     async triggerBatchExecutionFlow(tbodyElement) {
-      const elementsSelectedForArchiving = this.internalState.filter(
-        (i) => i.selected,
-      );
-      if (!elementsSelectedForArchiving.length) return;
+      const selectedItems = this.internalState.filter((i) => i.selected);
+      if (!selectedItems.length) return;
 
-      const { overlay, body, footer } = this.uiManager.instantiateDialog({
+      const { body, footerRight, close } = this.uiManager.instantiateDialog({
         title: "Kiroku Hokan-ki — Confirm archiving",
         icon: "📜",
         small: true,
@@ -1136,21 +1179,17 @@
         "#ta-batch-progress-log-terminal",
       );
 
-      elementsSelectedForArchiving.forEach((item) => {
+      selectedItems.forEach((item) => {
         const nodeItem = document.createElement("li");
         nodeItem.innerHTML = `<b>${mw.html.escape(item.thread.titleClean)}</b> <div class='ta-dest'>→ ${mw.html.escape(item.archiveTitle)}</div>`;
         summaryList.appendChild(nodeItem);
       });
 
-      const functionalFooterRight = document.createElement("div");
-      functionalFooterRight.className = "ta-dialog-footer-right";
-      footer.appendChild(functionalFooterRight);
-
       const cancelBtn = ArchiveUIManager.generateButton(
         "Cancel",
         "mw-ui-quiet",
-        () => overlay.closeHandler(),
-        functionalFooterRight,
+        close,
+        footerRight,
       );
       const confirmBtn = ArchiveUIManager.generateButton(
         "Confirm archive",
@@ -1161,75 +1200,76 @@
 
           terminalLog.textContent = "Starting process...";
 
+          // Group selected items by destination archive page.
           const mappingBatches = new Map();
-          elementsSelectedForArchiving.forEach((item) => {
+          selectedItems.forEach((item) => {
             if (!mappingBatches.has(item.archiveTitle))
               mappingBatches.set(item.archiveTitle, []);
             mappingBatches.get(item.archiveTitle).push(item);
           });
 
+          const ATTR = ArchiveConfig.EDIT_SUMMARY_ATTRIBUTION;
+
           try {
-            // Apply Optimistic Locking: Use the initially loaded text and timestamp
+            // Apply optimistic locking: use the initially loaded text and timestamp.
             let globalWikitextBuffer = this.initialWikitext;
             const operationalBaseTimestamp = this.initialBaseTimestamp;
-            const processingLogsSuccessful = [];
+            const successfulThreads = [];
 
             for (const [archiveSubpagePath, itemsArray] of mappingBatches) {
               terminalLog.textContent = `Saving discussions to ${archiveSubpagePath}...`;
 
-              const mergedWikitextPayload = itemsArray
+              const mergedWikitext = itemsArray
                 .map((i) => i.thread.content.trim())
                 .join("\n\n");
-              const targetSummaryDescription = `Archiving discussions to subpage (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
 
               await this.apiService.saveToArchiveTarget(
                 archiveSubpagePath,
-                mergedWikitextPayload,
-                targetSummaryDescription,
+                mergedWikitext,
+                `Archiving discussions to subpage ${ATTR}`,
               );
               itemsArray.forEach((i) => {
                 i.status = "ok";
-                processingLogsSuccessful.push(i.thread);
+                successfulThreads.push(i.thread);
               });
+              this.renderTableRows(tbodyElement);
             }
 
             terminalLog.textContent = "Removing discussions from talk page...";
-            processingLogsSuccessful.sort(
-              (alpha, beta) => beta.start - alpha.start,
-            );
-            processingLogsSuccessful.forEach((threadItem) => {
+            successfulThreads.sort((a, b) => b.start - a.start);
+            successfulThreads.forEach((thread) => {
               globalWikitextBuffer =
-                globalWikitextBuffer.substring(0, threadItem.start) +
-                globalWikitextBuffer.substring(threadItem.end);
+                globalWikitextBuffer.substring(0, thread.start) +
+                globalWikitextBuffer.substring(thread.end);
             });
 
             await this.apiService.updateTalkSourcePage(
               globalWikitextBuffer.trim(),
-              `Removing archived discussions (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
+              `Removing archived discussions ${ATTR}`,
               operationalBaseTimestamp,
             );
 
             terminalLog.textContent = "Archiving completed successfully!";
-            this.renderOptimisedTableRows(tbodyElement);
+            this.renderTableRows(tbodyElement);
             setTimeout(() => {
-              overlay.closeHandler();
+              close();
               window.location.reload();
             }, 1200);
-          } catch (failureTransactionError) {
-            const errorDetail = classifyApiError(failureTransactionError);
+          } catch (failureError) {
+            const errorDetail = classifyApiError(failureError);
             console.error(
               `[KirokuHokanki] Batch archiving failed [${errorDetail.code}]:`,
-              failureTransactionError,
+              failureError,
             );
             terminalLog.innerHTML = `<span style='color:#b00;'>Archiving failed: ${mw.html.escape(errorDetail.message)}</span>`;
-            elementsSelectedForArchiving.forEach((i) => {
+            selectedItems.forEach((i) => {
               i.status = "error";
             });
-            this.renderOptimisedTableRows(tbodyElement);
+            this.renderTableRows(tbodyElement);
             cancelBtn.disabled = false;
           }
         },
-        functionalFooterRight,
+        footerRight,
       );
     }
 
@@ -1237,7 +1277,7 @@
       nativeButtonElement.disabled = true;
       nativeButtonElement.innerHTML = `<span class="ta-btn-spinner"></span>`;
 
-      const { overlay, body, footer } = this.uiManager.instantiateDialog({
+      const { body, footerRight, close } = this.uiManager.instantiateDialog({
         title: "Kiroku Hokan-ki — Archive section",
         icon: "📜",
         small: true,
@@ -1256,55 +1296,37 @@
 
       try {
         const sharedMonthsMap = this.localeEngine.getMonthMap();
-        const activityDateResolved = WikitextParser.computeThreadActivityDate(
+        const activityDate = WikitextParser.computeThreadActivityDate(
           threadItem.content,
           sharedMonthsMap,
         );
-        const resolvedYear = activityDateResolved
-          ? activityDateResolved.getUTCFullYear()
+        const resolvedYear = activityDate
+          ? activityDate.getUTCFullYear()
           : new Date().getUTCFullYear();
 
         let systemSelectedYear = resolvedYear;
-        let signatureDisplayHtml = `<b><span style="color:#a2a9b1">No signature found</span></b>`;
 
-        if (activityDateResolved) {
-          const relativeTimeStr =
-            WikitextParser.getRelativeTimeAgo(activityDateResolved);
-          const isoDateString = activityDateResolved.toISOString().slice(0, 10);
-          signatureDisplayHtml = `<b title="${mw.html.escape(relativeTimeStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;">${mw.html.escape(isoDateString)}</b>`;
-        }
+        // Shared helper produces consistent date display with the bulk panel.
+        const signatureHtml = WikitextParser.buildDateDisplayHtml(activityDate);
 
         const localRenderRoutine = () => {
-          const destinationPathString =
+          const destinationPath =
             this.getArchiveDestinationPath(systemSelectedYear);
-
-          const isYearOverride = systemSelectedYear !== resolvedYear;
-          const selectStyleClass = isYearOverride
-            ? "ta-year-sel ta-year-override"
-            : "ta-year-sel";
+          const isOverride = systemSelectedYear !== resolvedYear;
 
           workzone.innerHTML = `
-                        <p>Last active signature: ${signatureDisplayHtml}</p>
+                        <p>Last active signature: ${signatureHtml}</p>
                         <div class="ta-year-row">
                             <label for="ta-single-year-select">Archive year:</label>
-                            <select id="ta-single-year-select" class="${selectStyleClass}"></select>
+                            <select id="ta-single-year-select" class="${isOverride ? "ta-year-sel ta-year-override" : "ta-year-sel"}"></select>
                         </div>
-                        <div class="ta-dest-preview">Archive path: <b>${mw.html.escape(destinationPathString)}</b></div>
+                        <div class="ta-dest-preview">Archive path: <b>${mw.html.escape(destinationPath)}</b></div>
                         <div class="ta-progress-log" id="ta-single-execution-terminal-log"></div>`;
 
           const innerSelect = workzone.querySelector("#ta-single-year-select");
-          const currentYearSystem = new Date().getUTCFullYear();
-          for (
-            let yIdx = currentYearSystem + 1;
-            yIdx >= currentYearSystem - 15;
-            yIdx--
-          ) {
-            const opt = document.createElement("option");
-            opt.value = yIdx;
-            opt.textContent = yIdx;
-            if (yIdx === systemSelectedYear) opt.selected = true;
-            innerSelect.appendChild(opt);
-          }
+          // Use shared year option builder rather than a local loop.
+          innerSelect.innerHTML = WikitextParser.buildYearOptionHtml();
+          innerSelect.value = systemSelectedYear;
 
           innerSelect.addEventListener("change", (e) => {
             systemSelectedYear = parseInt(e.target.value, 10);
@@ -1314,15 +1336,13 @@
 
         localRenderRoutine();
 
-        const uiControlsFooterRight = document.createElement("div");
-        uiControlsFooterRight.className = "ta-dialog-footer-right";
-        footer.appendChild(uiControlsFooterRight);
+        const ATTR = ArchiveConfig.EDIT_SUMMARY_ATTRIBUTION;
 
         const singleCancelBtn = ArchiveUIManager.generateButton(
           "Cancel",
           "mw-ui-quiet",
-          () => overlay.closeHandler(),
-          uiControlsFooterRight,
+          close,
+          footerRight,
         );
         const singleConfirmBtn = ArchiveUIManager.generateButton(
           "Archive with Kiroku Hokan-ki",
@@ -1331,41 +1351,39 @@
             singleConfirmBtn.disabled = true;
             singleCancelBtn.disabled = true;
 
-            const singleTerminalNode = workzone.querySelector(
+            const terminalNode = workzone.querySelector(
               "#ta-single-execution-terminal-log",
             );
-            singleTerminalNode.textContent = "Saving section to archive...";
+            terminalNode.textContent = "Saving section to archive...";
 
             try {
-              // Apply Optimistic Locking: Use the initially loaded text and timestamp
+              // Apply optimistic locking: use the initially loaded text and timestamp.
               let sourceWikitext = this.initialWikitext;
               const currentBaseTimestamp = this.initialBaseTimestamp;
 
-              const destinationArchivePage =
+              const destinationPage =
                 this.getArchiveDestinationPath(systemSelectedYear);
-              const modificationSummary = `Archiving section: ${threadItem.titleClean} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
 
               await this.apiService.saveToArchiveTarget(
-                destinationArchivePage,
+                destinationPage,
                 threadItem.content,
-                modificationSummary,
+                `Archiving section: ${threadItem.titleClean} ${ATTR}`,
               );
 
-              singleTerminalNode.textContent =
-                "Removing section from talk page...";
+              terminalNode.textContent = "Removing section from talk page...";
               sourceWikitext =
                 sourceWikitext.substring(0, threadItem.start) +
                 sourceWikitext.substring(threadItem.end);
 
               await this.apiService.updateTalkSourcePage(
                 sourceWikitext.trim(),
-                `Removing archived section: ${threadItem.titleClean} (via [[w:id:Pengguna:Rachmat04/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`,
+                `Removing archived section: ${threadItem.titleClean} ${ATTR}`,
                 currentBaseTimestamp,
               );
 
-              singleTerminalNode.textContent = "Section archived successfully!";
+              terminalNode.textContent = "Section archived successfully!";
               setTimeout(() => {
-                overlay.closeHandler();
+                close();
                 window.location.reload();
               }, 1000);
             } catch (err) {
@@ -1374,11 +1392,11 @@
                 `[KirokuHokanki] Section archiving failed [${errorDetail.code}]:`,
                 err,
               );
-              singleTerminalNode.innerHTML = `<span style='color:#b00;'>Archiving failed: ${mw.html.escape(errorDetail.message)}</span>`;
+              terminalNode.innerHTML = `<span style='color:#b00;'>Archiving failed: ${mw.html.escape(errorDetail.message)}</span>`;
               singleCancelBtn.disabled = false;
             }
           },
-          uiControlsFooterRight,
+          footerRight,
         );
       } catch (parsingFailure) {
         workzone.textContent = "Could not parse this section.";
@@ -1388,7 +1406,7 @@
   }
 
   // ============================================================================
-  // [BOOTSTRAP LAYER]
+  // [Bootstrap layer]
   // ============================================================================
   mw.loader.using(["mediawiki.api", "mediawiki.util"]).then(function () {
     $(function () {
