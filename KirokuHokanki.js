@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.8.0
+ * Version 2.8.1
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -410,6 +410,11 @@
             return [+m[3], targetMonth, +m[2], hr, mn];
           },
         },
+        {
+          id: "cjk-signature",
+          re: /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*\([^)]+\))?\s*(\d{1,2})[:.](\d{2})/gu,
+          extract: (m) => [+m[1], +m[2], +m[3], +m[4], +m[5]],
+        },
       ];
 
       let newestResolvedDate = null;
@@ -525,8 +530,8 @@
      * Returns { overlay, body, footer, footerRight, close }.
      * - close()     — call to dismiss the dialogue programmatically.
      * - footerRight — pre-created right-aligned button container inside footer.
-     *   Callers that also need a left-side footer element should create one and
-     *   use footer.insertBefore(leftEl, footerRight).
+     * Callers that also need a left-side footer element should create one and
+     * use footer.insertBefore(leftEl, footerRight).
      */
     instantiateDialog(options) {
       const overlay = document.createElement("div");

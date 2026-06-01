@@ -1,3 +1,8 @@
+## 2.8.1
+
+### Added
+- Added a `cjk-signature` timestamp pattern to `WikitextParser.computeThreadActivityDate()` for detecting signatures in the `YYYY年MM月DD日 (W) HH:MM` format
+
 ## 2.8.0
 
 ### Changed
