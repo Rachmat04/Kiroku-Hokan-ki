@@ -1,3 +1,15 @@
+## 2.9.0
+
+### Changed
+
+* Added `ArchiveConfig.PRECISE_SUB_DAY_TIMES` option (default: `true`)
+
+### Improved
+
+* Enhanced `getRelativeTimeAgo` "today" handling to support hour/minute granularity when `PRECISE_SUB_DAY_TIMES` is enabled
+* Improved time display accuracy for same-day timestamps while preserving existing relative time behaviour for older entries
+* Kept default behaviour enabled without requiring configuration changes
+
 ## 2.8.1
 
 ### Added

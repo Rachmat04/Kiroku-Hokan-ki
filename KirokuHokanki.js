@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.8.1
+ * Version 2.9.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -11,7 +11,8 @@
  * KEY FEATURES:
  * - Automatically splits talk pages into individual threads using level-2 headings.
  * - Parses signature timestamps dynamically across 400+ wiki languages.
- * - Displays friendly relative time strings (e.g., "~2 weeks ago") as hoverable tooltips.
+ * - Displays relative time strings (e.g., "~3 hours ago", "~2 weeks ago") as hoverable tooltips.
+ *   Sub-24-hour precision is configurable via ArchiveConfig.PRECISE_SUB_DAY_TIMES.
  * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
  * ============================================================================
  */
@@ -56,6 +57,15 @@
         mw.config.get("wgUserLanguage"),
       ]);
       return Array.from(activeContexts).filter(Boolean);
+    }
+
+    /**
+     * When true, relative timestamps shorter than 24 hours are shown as
+     * "~N hours ago" or "~N mins ago" instead of the vague "today".
+     * Set to false to revert to the previous "today" label.
+     */
+    static get PRECISE_SUB_DAY_TIMES() {
+      return true;
     }
 
     /**
@@ -454,7 +464,19 @@
 
       // Guard against future timestamps resulting in negative times.
       if (diffMs < 0) return "just now";
-      if (diffMs < MS_PER_DAY) return "today";
+
+      if (diffMs < MS_PER_DAY) {
+        // Show precise sub-day time when the option is enabled, so that
+        // a timestamp from a few hours ago is not misleadingly labelled "today".
+        if (!ArchiveConfig.PRECISE_SUB_DAY_TIMES) return "today";
+        const diffHours = Math.floor(diffMs / 3600000);
+        if (diffHours < 1) {
+          const diffMins = Math.floor(diffMs / 60000);
+          if (diffMins < 1) return "just now";
+          return `~${diffMins} min${diffMins !== 1 ? "s" : ""} ago`;
+        }
+        return `~${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+      }
 
       const diffDays = Math.floor(diffMs / MS_PER_DAY);
       if (diffDays < 7)
