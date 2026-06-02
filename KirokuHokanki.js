@@ -1,19 +1,15 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.9.0
+ * Version 2.9.1
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
  * An automated talk page archiving gadget for MediaWiki that streamlines user
  * talk page maintenance by moving inactive discussions into subpages.
  *
- * KEY FEATURES:
- * - Automatically splits talk pages into individual threads using level-2 headings.
- * - Parses signature timestamps dynamically across 400+ wiki languages.
- * - Displays relative time strings (e.g., "~3 hours ago", "~2 weeks ago") as hoverable tooltips.
- *   Sub-24-hour precision is configurable via ArchiveConfig.PRECISE_SUB_DAY_TIMES.
- * - Allows batch archiving with safe edit-conflict/basetimestamp guardrails.
+ * REPOSITORY:
+ * https://github.com/Rachmat04/Kiroku-Hokan-ki
  * ============================================================================
  */
 // <nowiki>
@@ -35,7 +31,7 @@
 
     /** Attribution string appended to every edit summary. */
     static get EDIT_SUMMARY_ATTRIBUTION() {
-      return `(via [[w:id:Pengguna:${ArchiveConfig.ALLOWED_USER}/KirokuHokanki.js|⚙️ Kiroku Hokan-ki]])`;
+      return `— 📜 [[w:id:Pengguna:${ArchiveConfig.ALLOWED_USER}/KirokuHokanki.js|Kiroku Hōkan-ki]]`;
     }
 
     /**
@@ -656,7 +652,7 @@
                 .tng-btn-destructive:hover:not(:disabled) { background: #8a0018; border-color: #8a0018; }
                 .tng-btn-destructive:disabled { opacity: .5; cursor: not-allowed; }
                 
-                /* Custom inline button for Kiroku Hokan-ki */
+                /* Custom inline button for Kiroku Hōkan-ki */
                 .tng-btn-inline {
                     margin-left: 8px;
                     padding: 2px 6px;
@@ -814,9 +810,9 @@
       this.portletLink = mw.util.addPortletLink(
         "p-cactions",
         "#",
-        "📜 Kiroku Hokan-ki",
+        "📜 Kiroku Hōkan-ki",
         "ca-kiroku-hokanki",
-        "Open Kiroku Hokan-ki archive manager",
+        "Open Kiroku Hōkan-ki archive manager",
       );
 
       $(this.portletLink).on("click", (event) => {
@@ -835,7 +831,7 @@
       if (this.threads.length && this.portletLink) {
         const targetLink =
           this.portletLink.querySelector("a") || this.portletLink;
-        targetLink.textContent = `📜 Kiroku Hokan-ki (${this.threads.length})`;
+        targetLink.textContent = `📜 Kiroku Hōkan-ki (${this.threads.length})`;
       }
     }
 
@@ -850,7 +846,7 @@
         const inlineBtn = document.createElement("button");
         inlineBtn.className = "tng-btn tng-btn-inline";
         inlineBtn.textContent = "📜";
-        inlineBtn.title = "Archive with Kiroku Hokan-ki";
+        inlineBtn.title = "Archive with Kiroku Hōkan-ki";
 
         inlineBtn.addEventListener("click", (event) => {
           event.preventDefault();
@@ -889,7 +885,7 @@
 
     displayCaveatNotice() {
       this._showInfoNotice(
-        "Kiroku Hokan-ki",
+        "Kiroku Hōkan-ki",
         `<p style="margin:0; font-weight:bold; color:#b00;">Feature restricted</p>
          <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
            This feature can only be used on specific talk pages by authorised users.
@@ -899,10 +895,10 @@
 
     displayEmptyWarningNotice() {
       this._showInfoNotice(
-        "Kiroku Hokan-ki",
+        "Kiroku Hōkan-ki",
         `<p style="margin:0">No discussions were found on this talk page.</p>
          <p style="margin:8px 0 0;color:#54595d;font-size:0.9em">
-           Kiroku Hokan-ki only detects sections created with standard level-2 headings (<code>== &hellip; ==</code>).
+           Kiroku Hōkan-ki only detects sections created with standard level-2 headings (<code>== &hellip; ==</code>).
          </p>`,
       );
     }
@@ -925,7 +921,7 @@
 
       const { body, footer, footerRight, close } =
         this.uiManager.instantiateDialog({
-          title: "Kiroku Hokan-ki — Bulk archive manager",
+          title: "Kiroku Hōkan-ki — Bulk archive manager",
           icon: "📜",
         });
 
@@ -987,7 +983,7 @@
       footer.insertBefore(footerInfo, footerRight);
 
       const submitBatchBtn = ArchiveUIManager.generateButton(
-        "Archive selected with Kiroku Hokan-ki",
+        "Archive selected with Kiroku Hōkan-ki",
         "mw-ui-progressive",
         () => this.triggerBatchExecutionFlow(tbody),
         footerRight,
@@ -1019,11 +1015,15 @@
           localStateItem.archiveTitle =
             this.getArchiveDestinationPath(parsedYear);
 
-          const referenceYear =
-            localStateItem.tsLoaded && localStateItem.timestamp
+          if (localStateItem.tsLoaded) {
+            const referenceYear = localStateItem.timestamp
               ? localStateItem.timestamp.getUTCFullYear()
               : new Date().getUTCFullYear();
-          localStateItem.yearOverride = parsedYear !== referenceYear;
+            localStateItem.yearOverride = parsedYear !== referenceYear;
+          } else {
+            // No scan has run yet; any manual selection is an intentional override.
+            localStateItem.yearOverride = true;
+          }
 
           historicalRow.querySelector(".ta-row-dest").textContent =
             localStateItem.archiveTitle;
@@ -1171,7 +1171,7 @@
       if (!selectedItems.length) return;
 
       const { body, footerRight, close } = this.uiManager.instantiateDialog({
-        title: "Kiroku Hokan-ki — Confirm archiving",
+        title: "Kiroku Hōkan-ki — Confirm archiving",
         icon: "📜",
         small: true,
       });
@@ -1287,7 +1287,7 @@
       nativeButtonElement.innerHTML = `<span class="ta-btn-spinner"></span>`;
 
       const { body, footerRight, close } = this.uiManager.instantiateDialog({
-        title: "Kiroku Hokan-ki — Archive section",
+        title: "Kiroku Hōkan-ki — Archive section",
         icon: "📜",
         small: true,
         onClose: () => {
@@ -1354,7 +1354,7 @@
           footerRight,
         );
         const singleConfirmBtn = ArchiveUIManager.generateButton(
-          "Archive with Kiroku Hokan-ki",
+          "Archive with Kiroku Hōkan-ki",
           "mw-ui-progressive",
           async () => {
             singleConfirmBtn.disabled = true;

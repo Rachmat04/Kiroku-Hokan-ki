@@ -1,3 +1,21 @@
+## 2.9.1
+
+### Changed
+
+* Updated various interface strings, labels, tooltips, dialog titles, button labels, comments, and attribution text for improved wording and consistency
+
+### Fixed
+
+* Fixed year-selection behaviour when timestamps have not yet been loaded
+* Updated the year override logic so the reference-year comparison only runs when `tsLoaded` is `true`
+* Ensured `yearOverride` is set unconditionally when timestamp data is unavailable, preventing incorrect year handling during initialisation
+
+### Improved
+
+* Refined user-facing text across archive panels, notices, confirmations, portlet links, and action buttons
+* Improved wording consistency throughout the interface while preserving existing functionality
+* Left repository paths and internal JavaScript identifiers unchanged to maintain compatibility with existing technical references
+
 ## 2.9.0
 
 ### Changed
