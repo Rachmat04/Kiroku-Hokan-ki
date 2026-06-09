@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.9.1
+ * Version 2.10.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -494,10 +494,15 @@
      * Builds the HTML for a timestamp table cell, including a relative-time
      * tooltip. Returns a placeholder when the timestamp is unavailable.
      *
+     * When inherited is true the date was inferred from a neighbouring thread
+     * (Method 3 or 4) rather than detected directly; a tilde prefix and an
+     * explanatory tooltip communicate this to the user.
+     *
      * @param {Date|null} timestamp
-     * @param {boolean}   tsLoaded  – false when no scan has been attempted yet
+     * @param {boolean}   tsLoaded   – false when no scan has been attempted yet
+     * @param {boolean}   inherited  – true when the date was inferred, not detected
      */
-    static buildDateDisplayHtml(timestamp, tsLoaded = true) {
+    static buildDateDisplayHtml(timestamp, tsLoaded = true, inherited = false) {
       if (!tsLoaded) {
         return `<span style="color:#a2a9b1">Not scanned</span>`;
       }
@@ -506,6 +511,9 @@
       }
       const relStr = WikitextParser.getRelativeTimeAgo(timestamp);
       const isoStr = timestamp.toISOString().slice(0, 10);
+      if (inherited) {
+        return `<span title="Estimated date — no signature detected; date inferred from a neighbouring thread (${mw.html.escape(relStr)})" style="cursor:help; color:#8a6a00; border-bottom: 1px dotted currentColor;">~${mw.html.escape(isoStr)}</span>`;
+      }
       return `<span title="${mw.html.escape(relStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;">${mw.html.escape(isoStr)}</span>`;
     }
 
@@ -910,6 +918,7 @@
         thread: thread,
         timestamp: null,
         tsLoaded: false,
+        tsInherited: false,
         year: currentYear,
         archiveTitle: this.getArchiveDestinationPath(currentYear),
         status: "pending",
@@ -1076,6 +1085,12 @@
           this.updateRowUIStatus(tbody, rowItem.id);
         }
 
+        // Apply inheritance (Method 3) and chronological alignment (Method 4)
+        // across the full state list so that normalisation can cross filter
+        // boundaries (e.g. an unsigned thread hidden by the age filter can
+        // still inherit from a visible neighbour).
+        this.normaliseThreadTimestamps(this.internalState);
+
         fetchTimestampsBtn.disabled = false;
         fetchTimestampsBtn.textContent = "🔄 Rescan timestamps";
         this.renderTableRows(tbody);
@@ -1083,6 +1098,61 @@
 
       this.renderTableRows(tbody);
       this.updateFooterCounters(submitBatchBtn, footerInfo);
+    }
+
+    /**
+     * Applies Method 3 (timestamp inheritance) and Method 4 (chronological
+     * alignment) to the items in the provided array after the primary scan.
+     *
+     * Method 3 — Backward pass: any item with no detected timestamp inherits
+     * the timestamp of the item directly below it (i.e. the next item in
+     * reading order). This gives unsigned threads a realistic archive year
+     * derived from their neighbours rather than defaulting silently to the
+     * current year.
+     *
+     * Method 4 — Forward pass: ensures no item is treated as older than the
+     * item above it. If a thread's timestamp precedes its predecessor's, it
+     * is nudged up to match, keeping the bulk archive destination consistent
+     * with the top-to-bottom reading order of the talk page.
+     *
+     * Both passes only adjust items whose year has not been manually overridden
+     * by the user. The tsInherited flag is set so the UI can signal that a
+     * date was inferred rather than directly detected.
+     *
+     * @param {Array} items – a reference to this.internalState (full list,
+     *   not the filtered subset), so that inheritance can cross filter
+     *   boundaries.
+     */
+    normaliseThreadTimestamps(items) {
+      // Method 3 — backward pass (bottom to top).
+      for (let i = items.length - 2; i >= 0; i--) {
+        if (!items[i].timestamp && !items[i].yearOverride) {
+          const donor = items[i + 1];
+          if (donor.timestamp) {
+            items[i].timestamp = donor.timestamp;
+            items[i].tsInherited = true;
+            items[i].year = donor.timestamp.getUTCFullYear();
+            items[i].archiveTitle = this.getArchiveDestinationPath(
+              items[i].year,
+            );
+          }
+        }
+      }
+
+      // Method 4 — forward pass (top to bottom).
+      for (let i = 1; i < items.length; i++) {
+        if (items[i].yearOverride) continue;
+        if (items[i].timestamp && items[i - 1].timestamp) {
+          if (items[i].timestamp < items[i - 1].timestamp) {
+            items[i].timestamp = items[i - 1].timestamp;
+            items[i].tsInherited = true;
+            items[i].year = items[i - 1].timestamp.getUTCFullYear();
+            items[i].archiveTitle = this.getArchiveDestinationPath(
+              items[i].year,
+            );
+          }
+        }
+      }
     }
 
     computeFilteredDataSubset() {
@@ -1122,6 +1192,7 @@
         const isoDateDisplay = WikitextParser.buildDateDisplayHtml(
           item.timestamp,
           item.tsLoaded,
+          item.tsInherited,
         );
         const badgeHtml = this.generateBadgeMarkup(item.status);
 
@@ -1315,8 +1386,12 @@
 
         let systemSelectedYear = resolvedYear;
 
-        // Shared helper produces consistent date display with the bulk panel.
-        const signatureHtml = WikitextParser.buildDateDisplayHtml(activityDate);
+        // Single-panel path has no inheritance pass, so tsInherited is always false here.
+        const signatureHtml = WikitextParser.buildDateDisplayHtml(
+          activityDate,
+          true,
+          false,
+        );
 
         const localRenderRoutine = () => {
           const destinationPath =

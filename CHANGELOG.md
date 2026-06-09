@@ -1,3 +1,37 @@
+## v2.10.0
+
+### Added
+
+* Added a `tsInherited` state property to track whether a thread timestamp was inferred from surrounding context rather than obtained directly
+* Added `normaliseThreadTimestamps()`, a dedicated post-processing function that normalises thread timestamps across the scanned state list
+* Added visual differentiation for inherited timestamps in date displays
+* Added tooltip support for inherited dates to indicate that the displayed value was inferred rather than directly detected
+
+### Changed
+
+* Updated timestamp processing to perform a dedicated normalisation pass after thread scanning is complete
+* Updated `buildDateDisplayHtml()` to accept an `inherited` parameter and render inferred timestamps differently from directly detected timestamps
+* Updated table rendering to pass each item's `tsInherited` state to the date display renderer
+* Updated the single-thread display path to explicitly pass `false` for the inheritance flag
+
+### Fixed
+
+* Improved handling of threads with missing timestamp information by inheriting dates from surrounding context where appropriate
+* Improved consistency of timestamp data across scanned thread collections
+
+### Improved
+
+* Improved accuracy of thread date presentation by distinguishing between detected and inferred timestamps
+* Improved maintainability by isolating timestamp normalisation into a dedicated function
+* Improved transparency for users through visual indicators and tooltips for inherited dates
+* Improved future extensibility by introducing explicit inheritance tracking throughout the rendering pipeline
+
+### Notes
+
+* Timestamp normalisation is performed after every scan or rescan operation
+* Inherited timestamps are displayed with a prefixed `~` indicator and distinct styling to differentiate them from directly detected dates
+* Single-thread views are not subject to timestamp inheritance and always use a non-inherited state
+
 ## 2.9.1
 
 ### Changed
