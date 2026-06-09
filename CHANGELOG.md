@@ -2,35 +2,39 @@
 
 ### Added
 
-* Added a `tsInherited` state property to track whether a thread timestamp was inferred from surrounding context rather than obtained directly
-* Added `normaliseThreadTimestamps()`, a dedicated post-processing function that normalises thread timestamps across the scanned state list
-* Added visual differentiation for inherited timestamps in date displays
-* Added tooltip support for inherited dates to indicate that the displayed value was inferred rather than directly detected
+* Added the `CHRONOLOGICAL_ALIGNMENT` configuration flag to control chronological alignment functionality globally
+* Added `applyChronologicalAlignment()`, a dedicated function for aligning thread dates based on chronological context
+* Added an alignment toggle to the bulk archive panel toolbar when the feature is enabled
+* Added an `aligned` state indicator to distinguish automatically aligned dates from original dates
+* Added enhanced tooltips for aligned dates explaining how the displayed date was determined
 
 ### Changed
 
-* Updated timestamp processing to perform a dedicated normalisation pass after thread scanning is complete
-* Updated `buildDateDisplayHtml()` to accept an `inherited` parameter and render inferred timestamps differently from directly detected timestamps
-* Updated table rendering to pass each item's `tsInherited` state to the date display renderer
-* Updated the single-thread display path to explicitly pass `false` for the inheritance flag
+* Updated `buildDateDisplayHtml()` to accept an `aligned` parameter and render aligned dates with distinct visual styling
+* Updated table row rendering to pass alignment state information to the date display renderer
+* Updated bulk archive panel behaviour to support enabling and disabling chronological alignment at runtime
+* Updated rescan handling so chronological alignment is automatically re-applied after newly loaded items are processed
 
 ### Fixed
 
-* Improved handling of threads with missing timestamp information by inheriting dates from surrounding context where appropriate
-* Improved consistency of timestamp data across scanned thread collections
+* Improved date consistency across thread collections by aligning eligible timestamps according to surrounding chronological context
+* Preserved manual year overrides when applying chronological alignment
+* Ensured entries with null timestamps are excluded from alignment processing
 
 ### Improved
 
-* Improved accuracy of thread date presentation by distinguishing between detected and inferred timestamps
-* Improved maintainability by isolating timestamp normalisation into a dedicated function
-* Improved transparency for users through visual indicators and tooltips for inherited dates
-* Improved future extensibility by introducing explicit inheritance tracking throughout the rendering pipeline
+* Improved date accuracy and ordering for archive preparation workflows
+* Improved maintainability by isolating chronological alignment logic within a dedicated, testable function
+* Improved transparency by visually distinguishing aligned dates from unmodified dates
+* Improved usability by allowing the feature to be enabled or disabled directly from the interface without modifying configuration code
+* Improved consistency by automatically re-applying alignment after rescans
 
 ### Notes
 
-* Timestamp normalisation is performed after every scan or rescan operation
-* Inherited timestamps are displayed with a prefixed `~` indicator and distinct styling to differentiate them from directly detected dates
-* Single-thread views are not subject to timestamp inheritance and always use a non-inherited state
+* The feature can be completely disabled through the `CHRONOLOGICAL_ALIGNMENT` configuration flag
+* When disabled, the alignment controls are not displayed in the interface
+* `applyChronologicalAlignment()` operates directly on the parsed state collection and updates eligible items in place
+* Aligned dates use distinct styling and tooltips to differentiate them from original timestamps
 
 ## 2.9.1
 

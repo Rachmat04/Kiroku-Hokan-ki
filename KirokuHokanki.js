@@ -65,6 +65,17 @@
     }
 
     /**
+     * When true, chronological-order alignment is available in the bulk
+     * archive panel. The feature ensures no thread is assigned an older
+     * timestamp than the thread immediately above it in document order,
+     * preserving a coherent archive structure.
+     * Set to false to hide the alignment option entirely.
+     */
+    static get CHRONOLOGICAL_ALIGNMENT() {
+      return true;
+    }
+
+    /**
      * Computes the regional archive subpage string prefix.
      */
     static getArchiveSubpagePrefix() {
@@ -382,8 +393,21 @@
       );
     }
 
+    /**
+     * Scans a thread content block line by line to find the most recent
+     * timestamp signature. Processing line by line reduces cross-line false
+     * positives and confines each pattern match to a single logical unit of
+     * wikitext (one signature per line).
+     *
+     * For each line the method attempts every pattern in priority order and
+     * advances to the next line as soon as one match is found, avoiding
+     * redundant work on lines that have already yielded a date.
+     *
+     * @param   {string}  contentBlock  Raw wikitext of a single thread section.
+     * @param   {Object}  monthMap      Localised month-name → month-number map.
+     * @returns {Date|null}             Most recent UTC date found, or null.
+     */
     static computeThreadActivityDate(contentBlock, monthMap) {
-      const normalisedContent = WikitextParser.normaliseNumerals(contentBlock);
       const translationPatterns = [
         {
           id: "iso-standard",
@@ -397,7 +421,6 @@
             const rawMonth = m[4].toLowerCase().replace(/\./g, "").trim();
             const targetMonth = monthMap[rawMonth];
             if (!targetMonth) return null;
-
             const hr = +(m[1] || m[6] || 0);
             const mn = +(m[2] || m[7] || 0);
             return [+m[5], targetMonth, +m[3], hr, mn];
@@ -410,7 +433,6 @@
             const rawMonth = m[1].toLowerCase().replace(/\./g, "").trim();
             const targetMonth = monthMap[rawMonth];
             if (!targetMonth) return null;
-
             const hr = +(m[4] || 0);
             const mn = +(m[5] || 0);
             return [+m[3], targetMonth, +m[2], hr, mn];
@@ -423,31 +445,49 @@
         },
       ];
 
+      // Split into lines and normalise Arabic-Indic/Extended numerals per line.
+      // Empty lines and wikitext structural lines (e.g. bare "----") are skipped
+      // immediately to avoid unnecessary regex work.
+      const lines = contentBlock.split("\n");
       let newestResolvedDate = null;
 
-      translationPatterns.forEach((pattern) => {
-        pattern.re.lastIndex = 0;
-        let compositionMatch;
-        while (
-          (compositionMatch = pattern.re.exec(normalisedContent)) !== null
-        ) {
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || line === "----") continue;
+
+        const normalisedLine = WikitextParser.normaliseNumerals(line);
+        let lineMatched = false;
+
+        for (const pattern of translationPatterns) {
+          // Each pattern regex is used without the global flag so exec() always
+          // searches from the start of the string, making it safe to reuse
+          // across iterations without resetting lastIndex.
+          const compositionMatch = pattern.re.exec(normalisedLine);
+          if (!compositionMatch) continue;
+
           const fields = pattern.extract(compositionMatch);
-          if (fields) {
-            const [yr, mo, dy, hr, mn] = fields;
+          if (!fields) continue;
 
-            // Retain unified UTC construction. This preserves the string year
-            // from the wikitext without local timezone shifts affecting the
-            // year folder logic.
-            const candidate = new Date(Date.UTC(yr, mo - 1, dy, hr, mn));
+          const [yr, mo, dy, hr, mn] = fields;
 
-            if (!isNaN(candidate.getTime())) {
-              if (!newestResolvedDate || candidate > newestResolvedDate) {
-                newestResolvedDate = candidate;
-              }
+          // Retain unified UTC construction. This preserves the string year
+          // from the wikitext without local timezone shifts affecting the
+          // year folder logic.
+          const candidate = new Date(Date.UTC(yr, mo - 1, dy, hr, mn));
+
+          if (!isNaN(candidate.getTime())) {
+            if (!newestResolvedDate || candidate > newestResolvedDate) {
+              newestResolvedDate = candidate;
             }
+            // One match per line is sufficient; move on to the next line.
+            lineMatched = true;
+            break;
           }
         }
-      });
+
+        // Suppress the unused-variable warning in strict environments.
+        void lineMatched;
+      }
 
       return newestResolvedDate;
     }
@@ -494,15 +534,12 @@
      * Builds the HTML for a timestamp table cell, including a relative-time
      * tooltip. Returns a placeholder when the timestamp is unavailable.
      *
-     * When inherited is true the date was inferred from a neighbouring thread
-     * (Method 3 or 4) rather than detected directly; a tilde prefix and an
-     * explanatory tooltip communicate this to the user.
-     *
      * @param {Date|null} timestamp
-     * @param {boolean}   tsLoaded   – false when no scan has been attempted yet
-     * @param {boolean}   inherited  – true when the date was inferred, not detected
+     * @param {boolean}   tsLoaded  – false when no scan has been attempted yet
+     * @param {boolean}   aligned   – true when the date was clamped by
+     *                                chronological-order alignment
      */
-    static buildDateDisplayHtml(timestamp, tsLoaded = true, inherited = false) {
+    static buildDateDisplayHtml(timestamp, tsLoaded = true, aligned = false) {
       if (!tsLoaded) {
         return `<span style="color:#a2a9b1">Not scanned</span>`;
       }
@@ -511,10 +548,10 @@
       }
       const relStr = WikitextParser.getRelativeTimeAgo(timestamp);
       const isoStr = timestamp.toISOString().slice(0, 10);
-      if (inherited) {
-        return `<span title="Estimated date — no signature detected; date inferred from a neighbouring thread (${mw.html.escape(relStr)})" style="cursor:help; color:#8a6a00; border-bottom: 1px dotted currentColor;">~${mw.html.escape(isoStr)}</span>`;
-      }
-      return `<span title="${mw.html.escape(relStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;">${mw.html.escape(isoStr)}</span>`;
+      const alignedAttr = aligned
+        ? ` title="${mw.html.escape(relStr)} (aligned to preceding thread)" style="cursor:help; border-bottom: 1px dotted #d4730a; color:#7a3a00;"`
+        : ` title="${mw.html.escape(relStr)}" style="cursor:help; border-bottom: 1px dotted currentColor;"`;
+      return `<span${alignedAttr}>${mw.html.escape(isoStr)}</span>`;
     }
 
     /**
@@ -528,6 +565,49 @@
         html += `<option value="${y}">${y}</option>`;
       }
       return html;
+    }
+
+    /**
+     * Applies chronological-order alignment to an array of internal state
+     * items (in document order). If a thread's resolved timestamp is earlier
+     * than the timestamp of the preceding thread, it is clamped upward to
+     * match that predecessor.
+     *
+     * Rules:
+     * - Only items whose `tsLoaded` flag is true are considered.
+     * - Items with a null timestamp are skipped; the last non-null anchor
+     *   continues to apply to subsequent items.
+     * - The `yearOverride` flag is set on any item whose year changes as a
+     *   result of alignment, so the UI can style it accordingly.
+     * - The method mutates the items in place and returns the same array.
+     *
+     * @param   {Array}  stateItems  Array of internal state objects.
+     * @returns {Array}              The same array, mutated in place.
+     */
+    static applyChronologicalAlignment(stateItems) {
+      let anchorTimestamp = null;
+
+      for (const item of stateItems) {
+        if (!item.tsLoaded || item.timestamp === null) continue;
+
+        if (anchorTimestamp !== null && item.timestamp < anchorTimestamp) {
+          // Clamp this item's effective timestamp up to the anchor.
+          item.timestamp = new Date(anchorTimestamp.getTime());
+          item.aligned = true;
+        } else {
+          item.aligned = false;
+        }
+
+        // Update the year derived from the (possibly clamped) timestamp,
+        // unless the user has already made a manual year selection.
+        if (!item.yearOverride) {
+          item.year = item.timestamp.getUTCFullYear();
+        }
+
+        anchorTimestamp = item.timestamp;
+      }
+
+      return stateItems;
     }
   }
 
@@ -918,7 +998,6 @@
         thread: thread,
         timestamp: null,
         tsLoaded: false,
-        tsInherited: false,
         year: currentYear,
         archiveTitle: this.getArchiveDestinationPath(currentYear),
         status: "pending",
@@ -948,6 +1027,14 @@
                             <option value="90">Older than 90 days</option>
                         </select>
                     </div>
+                    ${
+                      ArchiveConfig.CHRONOLOGICAL_ALIGNMENT
+                        ? `
+                    <label title="Ensures no thread is assigned an older date than the one above it in document order">
+                        <input type="checkbox" id="ta-align-chk"> Chronological-order alignment
+                    </label>`
+                        : ""
+                    }
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="ta-thread-table">
@@ -980,6 +1067,44 @@
       const fetchTimestampsBtn =
         interfaceWrapper.querySelector("#ta-load-ts-btn");
       const filterDropdown = interfaceWrapper.querySelector("#ta-filter-sel");
+
+      let alignEnabled = false;
+      const alignCheckbox = interfaceWrapper.querySelector("#ta-align-chk");
+      if (alignCheckbox) {
+        alignCheckbox.addEventListener("change", (e) => {
+          alignEnabled = e.target.checked;
+          if (alignEnabled) {
+            WikitextParser.applyChronologicalAlignment(this.internalState);
+            // Propagate updated years to archive titles.
+            this.internalState.forEach((item) => {
+              if (item.tsLoaded && item.timestamp) {
+                item.archiveTitle = this.getArchiveDestinationPath(item.year);
+              }
+            });
+          } else {
+            // Revert aligned items to their originally scanned timestamps by
+            // re-running a full timestamp rescan on the existing content.
+            const sharedMonthsMap = this.localeEngine.getMonthMap();
+            this.internalState.forEach((item) => {
+              if (!item.tsLoaded) return;
+              const original = WikitextParser.computeThreadActivityDate(
+                item.thread.content,
+                sharedMonthsMap,
+              );
+              item.timestamp = original;
+              item.aligned = false;
+              if (!item.yearOverride) {
+                item.year = original
+                  ? original.getUTCFullYear()
+                  : new Date().getUTCFullYear();
+                item.archiveTitle = this.getArchiveDestinationPath(item.year);
+              }
+            });
+          }
+          this.renderTableRows(tbody);
+          this.updateFooterCounters(submitBatchBtn, footerInfo);
+        });
+      }
 
       fetchTimestampsBtn.className = "tng-btn tng-btn-quiet";
 
@@ -1085,11 +1210,16 @@
           this.updateRowUIStatus(tbody, rowItem.id);
         }
 
-        // Apply inheritance (Method 3) and chronological alignment (Method 4)
-        // across the full state list so that normalisation can cross filter
-        // boundaries (e.g. an unsigned thread hidden by the age filter can
-        // still inherit from a visible neighbour).
-        this.normaliseThreadTimestamps(this.internalState);
+        // If alignment is active, re-apply it after every rescan so newly
+        // loaded timestamps are clamped correctly.
+        if (alignEnabled) {
+          WikitextParser.applyChronologicalAlignment(this.internalState);
+          this.internalState.forEach((item) => {
+            if (item.tsLoaded && item.timestamp) {
+              item.archiveTitle = this.getArchiveDestinationPath(item.year);
+            }
+          });
+        }
 
         fetchTimestampsBtn.disabled = false;
         fetchTimestampsBtn.textContent = "🔄 Rescan timestamps";
@@ -1098,61 +1228,6 @@
 
       this.renderTableRows(tbody);
       this.updateFooterCounters(submitBatchBtn, footerInfo);
-    }
-
-    /**
-     * Applies Method 3 (timestamp inheritance) and Method 4 (chronological
-     * alignment) to the items in the provided array after the primary scan.
-     *
-     * Method 3 — Backward pass: any item with no detected timestamp inherits
-     * the timestamp of the item directly below it (i.e. the next item in
-     * reading order). This gives unsigned threads a realistic archive year
-     * derived from their neighbours rather than defaulting silently to the
-     * current year.
-     *
-     * Method 4 — Forward pass: ensures no item is treated as older than the
-     * item above it. If a thread's timestamp precedes its predecessor's, it
-     * is nudged up to match, keeping the bulk archive destination consistent
-     * with the top-to-bottom reading order of the talk page.
-     *
-     * Both passes only adjust items whose year has not been manually overridden
-     * by the user. The tsInherited flag is set so the UI can signal that a
-     * date was inferred rather than directly detected.
-     *
-     * @param {Array} items – a reference to this.internalState (full list,
-     *   not the filtered subset), so that inheritance can cross filter
-     *   boundaries.
-     */
-    normaliseThreadTimestamps(items) {
-      // Method 3 — backward pass (bottom to top).
-      for (let i = items.length - 2; i >= 0; i--) {
-        if (!items[i].timestamp && !items[i].yearOverride) {
-          const donor = items[i + 1];
-          if (donor.timestamp) {
-            items[i].timestamp = donor.timestamp;
-            items[i].tsInherited = true;
-            items[i].year = donor.timestamp.getUTCFullYear();
-            items[i].archiveTitle = this.getArchiveDestinationPath(
-              items[i].year,
-            );
-          }
-        }
-      }
-
-      // Method 4 — forward pass (top to bottom).
-      for (let i = 1; i < items.length; i++) {
-        if (items[i].yearOverride) continue;
-        if (items[i].timestamp && items[i - 1].timestamp) {
-          if (items[i].timestamp < items[i - 1].timestamp) {
-            items[i].timestamp = items[i - 1].timestamp;
-            items[i].tsInherited = true;
-            items[i].year = items[i - 1].timestamp.getUTCFullYear();
-            items[i].archiveTitle = this.getArchiveDestinationPath(
-              items[i].year,
-            );
-          }
-        }
-      }
     }
 
     computeFilteredDataSubset() {
@@ -1192,7 +1267,7 @@
         const isoDateDisplay = WikitextParser.buildDateDisplayHtml(
           item.timestamp,
           item.tsLoaded,
-          item.tsInherited,
+          item.aligned === true,
         );
         const badgeHtml = this.generateBadgeMarkup(item.status);
 
@@ -1386,12 +1461,8 @@
 
         let systemSelectedYear = resolvedYear;
 
-        // Single-panel path has no inheritance pass, so tsInherited is always false here.
-        const signatureHtml = WikitextParser.buildDateDisplayHtml(
-          activityDate,
-          true,
-          false,
-        );
+        // Shared helper produces consistent date display with the bulk panel.
+        const signatureHtml = WikitextParser.buildDateDisplayHtml(activityDate);
 
         const localRenderRoutine = () => {
           const destinationPath =
