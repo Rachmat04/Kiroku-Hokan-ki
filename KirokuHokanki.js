@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.11.0
+ * Version 2.12.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -31,7 +31,7 @@
 
     /** Attribution string appended to every edit summary. */
     static get EDIT_SUMMARY_ATTRIBUTION() {
-      return `— 📜 [[w:id:Pengguna:${ArchiveConfig.ALLOWED_USER}/KirokuHokanki.js|Kiroku Hōkan-ki]]`;
+      return `— [[w:id:Pengguna:${ArchiveConfig.ALLOWED_USER}/KirokuHokanki.js|📜]]`;
     }
 
     /**
@@ -1381,7 +1381,7 @@
               await this.apiService.saveToArchiveTarget(
                 archiveSubpagePath,
                 mergedWikitext,
-                `Archiving discussions to subpage ${ATTR}`,
+                `Moved ${itemsArray.length} discussion(s) to archive subpage ${ATTR}`,
               );
               itemsArray.forEach((i) => {
                 i.status = "ok";
@@ -1400,7 +1400,7 @@
 
             await this.apiService.updateTalkSourcePage(
               globalWikitextBuffer.trim(),
-              `Removing archived discussions ${ATTR}`,
+              `Removed ${successfulThreads.length} archived discussion(s) from talk page ${ATTR}`,
               operationalBaseTimestamp,
             );
 
@@ -1522,7 +1522,7 @@
               await this.apiService.saveToArchiveTarget(
                 destinationPage,
                 threadItem.content,
-                `Archiving section: ${threadItem.titleClean} ${ATTR}`,
+                `Moved section "${threadItem.titleClean}" to archive subpage ${ATTR}`,
               );
 
               terminalNode.textContent = "Removing section from talk page...";
@@ -1532,7 +1532,7 @@
 
               await this.apiService.updateTalkSourcePage(
                 sourceWikitext.trim(),
-                `Removing archived section: ${threadItem.titleClean} ${ATTR}`,
+                `Removed section "${threadItem.titleClean}" from talk page ${ATTR}`,
                 currentBaseTimestamp,
               );
 

@@ -1,3 +1,31 @@
+## v2.12.0
+
+### Added
+- Added discussion counts to bulk archive edit summaries
+- Added discussion counts to bulk removal edit summaries
+
+### Changed
+- Updated single archive edit summaries to include the specific discussion title being archived
+- Updated single removal edit summaries to include the specific discussion title being removed
+- Updated bulk archive summaries to provide additional context about the number of discussions affected
+- Updated bulk removal summaries to provide additional context about the number of discussions affected
+
+### Fixed
+- Improved edit summary specificity for both single-item and bulk operations
+
+### Improved
+- Improved edit summary clarity by identifying the exact discussion involved in single archive and removal actions
+- Improved transparency of bulk operations by displaying the number of discussions affected
+- Improved page history readability for reviewers and administrators
+- Improved auditability of archive and removal actions through more descriptive edit summaries
+
+### Notes
+- Bulk archive summaries now include the number of discussions processed
+- Bulk removal summaries now include the number of discussions processed
+- Single archive summaries now reference the discussion title directly
+- Single removal summaries now reference the discussion title directly
+- No changes were made to archiving or removal logic; this release affects edit summary generation only
+
 ## v2.11.0
 
 ### Changed
