@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.10.0
+ * Version 2.11.0
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -768,7 +768,7 @@
                 .ta-dialog-body { padding: 0; overflow-y: auto; flex: 1; }
                 .ta-dialog-footer { padding: 10px 14px; background: #f8f9fa; border-top: 1px solid #eaecf0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0; }
                 .ta-dialog-footer-right { display: flex; gap: 7px; }
-                .ta-dialog-sm { width: min(520px, 96%); height: min(290px, 82vh); }
+                .ta-dialog-sm { width: min(720px, 96%); height: auto; max-height: 85vh; }
                 .ta-toolbar { padding: 9px 14px; background: #f0f2f5; border-bottom: 1px solid #eaecf0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
                 .ta-toolbar label { display: flex; align-items: center; gap: 5px; font-size: 0.87em; font-weight: 600; cursor: pointer; }
                 .ta-filter-age { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
@@ -805,7 +805,7 @@
                 .ta-badge-error    { background: #fde8e8; color: #b00; }
                 .ta-badge-skipped  { background: #f0f0f0; color: #555; }
                 .ta-footer-info { font-size: 0.83em; color: #54595d; }
-                .ta-confirm-list { margin: 8px 0 0; padding: 0; list-style: none; max-height: 200px; overflow-y: auto; border: 1px solid #eaecf0; border-radius: 4px; }
+                .ta-confirm-list { margin: 8px 0 0; padding: 0; list-style: none; border: 1px solid #eaecf0; border-radius: 4px; }
                 .ta-confirm-list li { padding: 6px 10px; border-bottom: 1px solid #eaecf0; font-size: 0.87em; }
                 .ta-confirm-list li:last-child { border-bottom: none; }
                 .ta-confirm-list .ta-dest { color: #3366cc; font-size: 0.82em; }

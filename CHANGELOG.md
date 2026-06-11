@@ -1,3 +1,35 @@
+## v2.11.0
+
+### Changed
+- Increased the width of `.ta-dialog-sm` from **520px** to **720px** (while retaining the existing responsive width limit)
+- Changed `.ta-dialog-sm` height behaviour from a fixed **290px** to an automatic content-based height
+- Increased the maximum dialog height from **82vh** to **85vh**.
+- Removed the dedicated scroll area from `.ta-confirm-list`
+- Removed the `max-height` constraint from `.ta-confirm-list`
+- Removed `overflow-y: auto` from `.ta-confirm-list`, allowing scrolling to be handled by the parent dialog body
+
+### Fixed
+- Fixed usability issues caused by the confirmation dialog being too small for larger archive operations
+- Fixed nested scrolling behaviour within the confirmation dialog
+- Fixed situations where users had to manage multiple scrollbars to review archive targets
+
+### Removed
+- Removed the internal scrollbar previously used by `.ta-confirm-list`
+
+### Improved
+- Improved readability by providing a wider confirmation dialog
+- Improved responsiveness by allowing dialog height to adapt to content
+- Improved user experience by consolidating scrolling into a single container
+- Improved visibility of archive targets and confirmation details
+- Improved behaviour across different screen sizes while maintaining viewport constraints
+- Reduced excessive scrolling when reviewing archive candidates
+
+### Notes
+- Scrolling is now handled exclusively by `.ta-dialog-body`, which already provides `overflow-y: auto`
+- The dialog remains constrained by `max-height: 85vh` and will not exceed the available viewport height
+- Very large confirmation lists may cause the dialog body to contain significantly more content before scrolling begins
+- This release affects only dialog layout and scrolling behaviour; no archive-processing logic was changed
+
 ## v2.10.0
 
 ### Added
