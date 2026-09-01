@@ -1,3 +1,16 @@
+## v2.12.1
+
+### Changed
+- Aligned dialogue visual styling with Tengu.js's design tokens: dialogue background changed from `#fff` to `#faf9f6`, box-shadow opacity adjusted to match, and `.ta-dialog-header-left` now wraps on narrow widths
+- Added `.tng-btn-sm`, mirrored from Tengu.js, as an available compact button variant (not yet used by any existing dialogue)
+
+### Improved
+- Added explanatory comments above previously uncommented methods across `WikiApiService`, `LocalisationEngine`, `WikitextParser`, `ArchiveUIManager`, and `GadgetController`, to make the codebase easier to follow section by section
+
+### Notes
+- No functional or behavioural changes; this release affects code comments and dialogue styling only
+- Class name prefixes (`ta-` vs. `tng-`) were left unchanged; full class unification with Tengu.js was not performed
+  
 ## v2.12.0
 
 ### Added

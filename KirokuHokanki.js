@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.12.0
+ * Version 2.12.1
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -184,6 +184,8 @@
       this.pageName = mwConfig.wgPageName;
     }
 
+    // Fetches the current wikitext and revision timestamp of the talk page,
+    // used as the baseline for both parsing and the optimistic-lock save.
     async getPageSourceData() {
       const response = await this.api.get({
         action: "query",
@@ -199,6 +201,8 @@
       };
     }
 
+    // Fetches a batch of MediaWiki system messages (month names, etc.) for
+    // a given interface language via action=query&meta=allmessages.
     async fetchSystemMessages(targetLanguage, messages) {
       const response = await this.api.get({
         action: "query",
@@ -227,6 +231,8 @@
       });
     }
 
+    // Saves the updated talk page wikitext, passing basetimestamp so the
+    // MediaWiki API rejects the edit if the page changed in the meantime.
     async updateTalkSourcePage(dynamicContent, summary, baseTimestamp) {
       return this.api.postWithToken("csrf", {
         action: "edit",
@@ -247,6 +253,9 @@
       this.monthMap = {};
     }
 
+    // Builds the merged month-name lookup map for the active languages by
+    // requesting the relevant system messages for each language in parallel,
+    // then layering on manual regional overrides.
     async initialiseSubsystem() {
       const primaryMessageKeys = [
         "january",
@@ -318,6 +327,8 @@
       this.injectLocalSystemOverrides();
     }
 
+    // Adds month names for local variants not covered by MediaWiki's
+    // standard system messages (e.g. Acehnese month names).
     injectLocalSystemOverrides() {
       const regionalOverrides = {
         "buleuen sa": 1,
@@ -336,6 +347,7 @@
       Object.assign(this.monthMap, regionalOverrides);
     }
 
+    // Returns the merged localised month-name -> month-number map.
     getMonthMap() {
       return this.monthMap;
     }
@@ -345,6 +357,8 @@
   // [Module 04] Wikitext component parser
   // ============================================================================
   class WikitextParser {
+    // Strips wikilinks and HTML tags from a heading title, keeping only the
+    // display text (piped link target, plain link, or raw text).
     static stripWikilinks(headingTitle) {
       let cleared = headingTitle.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, "$2");
       cleared = cleared.replace(/\[\[([^\]]+)\]\]/g, (_match, target) => {
@@ -354,6 +368,8 @@
       return cleared.replace(/<[^>]+>/g, "").trim();
     }
 
+    // Splits a page's wikitext into an array of discussion threads based on
+    // level-2 headings, each carrying its raw content and character offsets.
     static dissectThreads(rawWikitext) {
       // Prevents matching empty sections like "== ==" or "==  =="
       const regexMatcher = /^==\s*([^=\n]*?[^\s=][^=\n]*?)\s*==\s*$/gm;
@@ -377,6 +393,8 @@
       }));
     }
 
+    // Converts Arabic-Indic, Extended Arabic-Indic, and Bengali digit
+    // characters to plain ASCII digits so timestamp regexes can match them.
     static normaliseNumerals(inputStr) {
       return inputStr.replace(
         /[\u0660-\u0669\u06F0-\u06F9\u09E6-\u09EF]/g,
@@ -621,6 +639,7 @@
       this.injectUtilityStyles();
     }
 
+    // Lets the Escape key close the topmost open dialogue in the modal stack.
     registerGlobalEscapes() {
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && this.modalStack.length > 0) {
@@ -719,9 +738,18 @@
       return buttonElement;
     }
 
+    /**
+     * Injects the gadget's scoped CSS into the page.
+     *
+     * The rules below intentionally mirror Tengu.js's design tokens (colours,
+     * radii, spacing, button variants) so that Kiroku Hōkan-ki's dialogues
+     * look and feel consistent with the other gadgets in this author's suite,
+     * even though the two scripts keep separate class-name prefixes (`ta-` /
+     * `tng-`) and are not designed to share a stylesheet at runtime.
+     */
     injectUtilityStyles() {
       mw.util.addCSS(`
-                /* --- Tengu-style buttons --- */
+                /* --- Tengu-style buttons (shared visual language with Tengu.js) --- */
                 .tng-btn {
                     display: inline-flex; align-items: center; justify-content: center;
                     padding: 5px 14px; border-radius: 4px; font-size: 0.9em;
@@ -739,8 +767,10 @@
                 .tng-btn-destructive { background: #b00020; color: #fff; border-color: #b00020; }
                 .tng-btn-destructive:hover:not(:disabled) { background: #8a0018; border-color: #8a0018; }
                 .tng-btn-destructive:disabled { opacity: .5; cursor: not-allowed; }
-                
-                /* Custom inline button for Kiroku Hōkan-ki */
+                /* Compact button variant, matching Tengu's .tng-btn-sm sizing */
+                .tng-btn-sm { padding: 3px 9px; font-size: 0.84em; }
+
+                /* Custom inline button for Kiroku Hōkan-ki (no equivalent in Tengu) */
                 .tng-btn-inline {
                     margin-left: 8px;
                     padding: 2px 6px;
@@ -757,12 +787,13 @@
                     border-color: #36c;
                 }
 
+                /* --- Overlay & dialogue shell, aligned with Tengu's .tng-overlay/.tng-dialog --- */
                 .ta-btn-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: ta-spin .6s linear infinite; }
                 @keyframes ta-spin { to { transform: rotate(360deg); } }
                 .ta-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.52); z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 12px; animation: ta-fadein .15s ease-out; }
-                .ta-dialog { background: #fff; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px; width: min(820px, 96%); height: min(580px, 82vh); display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.35); font-family: system-ui, -apple-system, sans-serif; font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden; }
+                .ta-dialog { background: #faf9f6; color: #202122; border: 1px solid #a2a9b1; border-radius: 8px; width: min(820px, 96%); height: min(580px, 82vh); display: flex; flex-direction: column; box-shadow: 0 8px 28px rgba(0,0,0,.32); font-family: system-ui, -apple-system, sans-serif; font-size: 0.94em; animation: ta-slidein .15s ease-out; overflow: hidden; }
                 .ta-dialog-header { padding: 11px 16px; background: #f8f9fa; border-bottom: 1px solid #eaecf0; font-weight: 700; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-                .ta-dialog-header-left { display: flex; align-items: center; gap: 7px; }
+                .ta-dialog-header-left { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
                 .ta-dialog-close { background: none; border: none; font-size: 1.2em; cursor: pointer; color: #54595d; padding: 0 2px; line-height: 1; }
                 .ta-dialog-close:hover { color: #000; }
                 .ta-dialog-body { padding: 0; overflow-y: auto; flex: 1; }
@@ -847,6 +878,12 @@
   // [Module 06] Application orchestration controller
   // ============================================================================
   class GadgetController {
+    /**
+     * Wires up the sub-modules (API service, localisation engine, UI manager)
+     * and sets up the in-memory state used across a single page session:
+     * the parsed thread list, the bulk-panel working state, and the cached
+     * "original" page snapshot used for optimistic-locking on save.
+     */
     constructor() {
       this.apiService = new WikiApiService();
       this.localeEngine = new LocalisationEngine(this.apiService);
@@ -862,6 +899,9 @@
       this.initialBaseTimestamp = "";
     }
 
+    // Entry point called once on page load: always renders the portlet link,
+    // then — only in an allowed context — fetches the page source and
+    // localisation data in parallel, parses threads, and binds inline buttons.
     async initialise() {
       this.renderSystemPortlets();
 
@@ -886,6 +926,8 @@
       }
     }
 
+    // Builds the full archive subpage title for a given year, e.g.
+    // "User talk:Rachmat04/Archives/2026" (or "/Arsip/2026" on id-family wikis).
     getArchiveDestinationPath(year) {
       const pageTitle =
         mwConfig.wgFormattedNamespaces[mwConfig.wgNamespaceNumber] +
@@ -894,6 +936,9 @@
       return `${pageTitle}/${this.archiveSubpage}/${year}`;
     }
 
+    // Adds the "Kiroku Hōkan-ki" portlet link to every page and routes its
+    // click to the appropriate dialogue depending on the current context
+    // (restricted notice, empty-page notice, or the bulk archive panel).
     renderSystemPortlets() {
       this.portletLink = mw.util.addPortletLink(
         "p-cactions",
@@ -915,6 +960,8 @@
       });
     }
 
+    // Appends a "(N)" discussion count to the portlet label once threads
+    // have been parsed, so the user can see the thread count at a glance.
     updatePortletLabel() {
       if (this.threads.length && this.portletLink) {
         const targetLink =
@@ -923,6 +970,10 @@
       }
     }
 
+    // Inserts a small inline "📜" archive button next to each rendered h2
+    // heading, matching each heading to its corresponding parsed thread by
+    // position, and skips headings that already have the button (e.g. after
+    // a partial re-run).
     bindInlineSectionButtons() {
       const headingNodes = Array.from(
         document.querySelectorAll("#mw-content-text h2"),
@@ -971,6 +1022,7 @@
       );
     }
 
+    // Shown when a non-authorised user or unsupported page opens the gadget.
     displayCaveatNotice() {
       this._showInfoNotice(
         "Kiroku Hōkan-ki",
@@ -981,6 +1033,7 @@
       );
     }
 
+    // Shown when the current talk page has no level-2 heading discussions.
     displayEmptyWarningNotice() {
       this._showInfoNotice(
         "Kiroku Hōkan-ki",
@@ -991,6 +1044,9 @@
       );
     }
 
+    // Opens the main bulk archive dialogue: builds a working-state array
+    // from the parsed threads, renders the toolbar/table, and wires up
+    // scanning, filtering, per-row editing, and chronological alignment.
     openBulkArchivePanel() {
       const currentYear = new Date().getUTCFullYear();
       this.internalState = this.threads.map((thread, relativeIdx) => ({
@@ -1230,6 +1286,9 @@
       this.updateFooterCounters(submitBatchBtn, footerInfo);
     }
 
+    // Returns the subset of internalState rows that match the active
+    // "older than N days" filter. Rows that haven't been scanned yet are
+    // always included, since their age is not yet known.
     computeFilteredDataSubset() {
       if (this.filterDays === 0) return this.internalState;
       const MS_PER_DAY = 86400000;
@@ -1241,12 +1300,17 @@
       );
     }
 
+    // Refreshes the "N discussions selected" footer label and toggles the
+    // batch-archive button's disabled state based on the current selection.
     updateFooterCounters(buttonRef, infoRef) {
       const count = this.internalState.filter((i) => i.selected).length;
       infoRef.textContent = `${count} discussion${count !== 1 ? "s" : ""} selected for processing`;
       buttonRef.disabled = count === 0;
     }
 
+    // Fully re-renders the bulk archive table body from internalState,
+    // respecting the active filter. Called after any change that affects
+    // which rows are shown or how they should look (scan, filter, align, etc).
     renderTableRows(tbodyElement) {
       tbodyElement.innerHTML = "";
       const currentSubset = this.computeFilteredDataSubset();
@@ -1288,6 +1352,8 @@
       });
     }
 
+    // Cheaper alternative to a full renderTableRows() call: updates only the
+    // status badge of a single row, used while scanning timestamps one by one.
     updateRowUIStatus(tbodyElement, targetItemId) {
       const rowNode = tbodyElement.querySelector(
         `tr[data-index-id="${targetItemId}"]`,
@@ -1300,6 +1366,8 @@
         this.generateBadgeMarkup(targetItem.status);
     }
 
+    // Maps an internal status string ("pending", "loading", "ok", "error",
+    // "skipped") to its badge CSS class and display label.
     generateBadgeMarkup(status) {
       const BADGE_MAP = {
         pending: ["ta-badge-pending", "—"],
@@ -1312,6 +1380,12 @@
       return `<span class="ta-badge ${stylingClass}">${labelText}</span>`;
     }
 
+    // Shows the confirmation dialogue for the selected discussions and, on
+    // confirm, groups them by destination archive page, appends each group
+    // to its archive subpage, then removes all successfully archived
+    // sections from the talk page in a single edit (optimistic locking via
+    // the initially cached wikitext/timestamp, so a stale edit is rejected
+    // by the API rather than silently overwritten).
     async triggerBatchExecutionFlow(tbodyElement) {
       const selectedItems = this.internalState.filter((i) => i.selected);
       if (!selectedItems.length) return;
@@ -1428,6 +1502,11 @@
       );
     }
 
+    // Opens the single-section archive dialogue triggered by an inline "📜"
+    // button: parses the thread's activity date, lets the user override the
+    // target year, and on confirm moves just that one section to its
+    // archive subpage using the same optimistic-locking approach as the
+    // bulk flow.
     async openSingleArchivePanel(threadItem, nativeButtonElement) {
       nativeButtonElement.disabled = true;
       nativeButtonElement.innerHTML = `<span class="ta-btn-spinner"></span>`;
