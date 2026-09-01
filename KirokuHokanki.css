@@ -1,0 +1,521 @@
+/* ============================================================================
+ * Kiroku Hōkan-ki — 記録保管機
+ * Stylesheet
+ * ============================================================================
+ * This file was split out from KirokuHokanki.js in v2.13.0 to keep styling
+ * separate from application logic. It is loaded at runtime via
+ * mw.loader.load() from ArchiveUIManager.injectUtilityStyles() in
+ * KirokuHokanki.js.
+ *
+ * Hosted at:
+ * https://id.wikipedia.org/wiki/Pengguna:Rachmat04/KirokuHokanki.css
+ *
+ * REPOSITORY:
+ * https://github.com/Rachmat04/Kiroku-Hokan-ki
+ * ============================================================================
+ */
+
+/* --- Tengu-style buttons (shared visual language with Tengu.js) --- */
+.tng-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 14px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+  white-space: nowrap;
+}
+.tng-btn-primary {
+  background: #3366cc;
+  color: #fff;
+  border-color: #3366cc;
+}
+.tng-btn-primary:hover:not(:disabled) {
+  background: #2a4b9e;
+  border-color: #2a4b9e;
+}
+.tng-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tng-btn-quiet {
+  background: none;
+  color: #202122;
+  border-color: #a2a9b1;
+}
+.tng-btn-quiet:hover:not(:disabled) {
+  background: #f0f2f5;
+}
+.tng-btn-quiet:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tng-btn-destructive {
+  background: #b00020;
+  color: #fff;
+  border-color: #b00020;
+}
+.tng-btn-destructive:hover:not(:disabled) {
+  background: #8a0018;
+  border-color: #8a0018;
+}
+.tng-btn-destructive:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Compact button variant, matching Tengu's .tng-btn-sm sizing */
+.tng-btn-sm {
+  padding: 3px 9px;
+  font-size: 0.84em;
+}
+
+/* Custom inline button for Kiroku Hōkan-ki (no equivalent in Tengu) */
+.tng-btn-inline {
+  margin-left: 8px;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  line-height: 1.4;
+  border: 1px solid #a2a9b1;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  vertical-align: middle;
+}
+.tng-btn-inline:hover:not(:disabled) {
+  background: #eaf0fb;
+  border-color: #36c;
+}
+
+/* --- Overlay & dialogue shell, aligned with Tengu's .tng-overlay/.tng-dialog --- */
+.ta-btn-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ta-spin 0.6s linear infinite;
+}
+@keyframes ta-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ta-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.52);
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  animation: ta-fadein 0.15s ease-out;
+}
+.ta-dialog {
+  background: #faf9f6;
+  color: #202122;
+  border: 1px solid #a2a9b1;
+  border-radius: 8px;
+  width: min(820px, 96%);
+  height: min(580px, 82vh);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 0.94em;
+  animation: ta-slidein 0.15s ease-out;
+  overflow: hidden;
+}
+.ta-dialog-header {
+  padding: 11px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eaecf0;
+  font-weight: 700;
+  font-size: 1.05em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.ta-dialog-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.ta-dialog-close {
+  background: none;
+  border: none;
+  font-size: 1.2em;
+  cursor: pointer;
+  color: #54595d;
+  padding: 0 2px;
+  line-height: 1;
+}
+.ta-dialog-close:hover {
+  color: #000;
+}
+.ta-dialog-body {
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.ta-dialog-footer {
+  padding: 10px 14px;
+  background: #f8f9fa;
+  border-top: 1px solid #eaecf0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ta-dialog-footer-right {
+  display: flex;
+  gap: 7px;
+}
+.ta-dialog-sm {
+  width: min(720px, 96%);
+  height: auto;
+  max-height: 85vh;
+}
+.ta-toolbar {
+  padding: 9px 14px;
+  background: #f0f2f5;
+  border-bottom: 1px solid #eaecf0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ta-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.87em;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ta-filter-age {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+}
+.ta-filter-age select {
+  padding: 2px 6px;
+  border: 1px solid #a2a9b1;
+  border-radius: 3px;
+  font-size: 0.95em;
+}
+.ta-thread-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+  table-layout: fixed;
+  min-width: 700px;
+}
+.ta-col-check {
+  width: 36px;
+}
+.ta-col-ts {
+  width: 110px;
+}
+.ta-col-year {
+  width: 82px;
+}
+.ta-col-dest {
+  width: 190px;
+}
+.ta-col-status {
+  width: 96px;
+}
+.ta-thread-table th {
+  padding: 7px 12px;
+  background: #f8f9fa;
+  border-bottom: 2px solid #eaecf0;
+  text-align: left;
+  font-weight: 600;
+  white-space: normal;
+  word-wrap: break-word;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.ta-thread-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #eaecf0;
+  vertical-align: middle;
+}
+.ta-thread-table tr:last-child td {
+  border-bottom: none;
+}
+.ta-thread-table tr.ta-selected td {
+  background: #eaf0fb;
+}
+.ta-thread-table tr:hover td {
+  background: #f4f7fc;
+}
+.ta-thread-table tr.ta-selected:hover td {
+  background: #ddeaf9;
+}
+.ta-thread-table .ta-td-check {
+  text-align: center;
+}
+.ta-td-title {
+  word-break: break-word;
+  overflow: hidden;
+}
+.ta-td-ts {
+  white-space: nowrap;
+  color: #54595d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ta-td-year {
+  text-align: center;
+}
+.ta-td-dest {
+  color: #3366cc;
+  font-size: 0.85em;
+  word-break: break-all;
+}
+.ta-td-status {
+  text-align: center;
+}
+.ta-year-sel {
+  padding: 2px 4px;
+  border: 1px solid #a2a9b1;
+  border-radius: 3px;
+  font-size: 0.9em;
+  width: 70px;
+  cursor: pointer;
+  background: #fff;
+  color: #202122;
+}
+.ta-year-sel.ta-year-override {
+  border-color: #d4730a;
+  background: #fff8ee;
+  color: #7a3a00;
+  font-weight: 700;
+}
+.ta-year-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.88em;
+}
+.ta-year-row label {
+  color: #54595d;
+  white-space: nowrap;
+}
+.ta-year-row select {
+  padding: 3px 6px;
+  border: 1px solid #a2a9b1;
+  border-radius: 3px;
+  font-size: 1em;
+  cursor: pointer;
+}
+.ta-year-row select.ta-year-override {
+  border-color: #d4730a;
+  background: #fff8ee;
+  color: #7a3a00;
+  font-weight: 700;
+}
+.ta-dest-preview {
+  color: #3366cc;
+  font-size: 0.87em;
+  word-break: break-all;
+  margin-top: 4px;
+}
+.ta-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.ta-badge-pending {
+  background: #eaf0fb;
+  color: #2a55a8;
+}
+.ta-badge-loading {
+  background: #fef6e4;
+  color: #705000;
+}
+.ta-badge-ok {
+  background: #d5f5e3;
+  color: #1a6b3a;
+}
+.ta-badge-error {
+  background: #fde8e8;
+  color: #b00;
+}
+.ta-badge-skipped {
+  background: #f0f0f0;
+  color: #555;
+}
+.ta-footer-info {
+  font-size: 0.83em;
+  color: #54595d;
+}
+.ta-confirm-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid #eaecf0;
+  border-radius: 4px;
+}
+.ta-confirm-list li {
+  padding: 6px 10px;
+  border-bottom: 1px solid #eaecf0;
+  font-size: 0.87em;
+}
+.ta-confirm-list li:last-child {
+  border-bottom: none;
+}
+.ta-confirm-list .ta-dest {
+  color: #3366cc;
+  font-size: 0.82em;
+}
+.ta-dialog-body-pad {
+  padding: 14px 16px;
+}
+.ta-progress-log {
+  margin-top: 10px;
+  font-size: 0.85em;
+  color: #54595d;
+  min-height: 1.5em;
+}
+@keyframes ta-fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ta-slidein {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .ta-dialog {
+    background: #1e1e1e;
+    color: #eaecf0;
+    border-color: #54595d;
+  }
+  .ta-dialog-header,
+  .ta-dialog-footer {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
+  }
+  .ta-toolbar {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+  .ta-thread-table th {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+  .ta-thread-table td {
+    border-color: #3a3a3a;
+  }
+  .ta-thread-table tr.ta-selected td {
+    background: #1a2a45;
+  }
+  .ta-thread-table tr:hover td {
+    background: #252535;
+  }
+  .ta-thread-table tr.ta-selected:hover td {
+    background: #1e3050;
+  }
+  .ta-td-ts,
+  .ta-footer-info,
+  .ta-progress-log,
+  .ta-year-row label {
+    color: #a2a9b1;
+  }
+  .ta-td-dest,
+  .ta-dest-preview,
+  .ta-confirm-list .ta-dest {
+    color: #6699ff;
+  }
+  .ta-confirm-list {
+    border-color: #3a3a3a;
+  }
+  .ta-confirm-list li {
+    border-color: #3a3a3a;
+  }
+  .ta-filter-age select {
+    background: #2a2a2a;
+    color: #eaecf0;
+    border-color: #54595d;
+  }
+  .ta-year-sel {
+    background: #2a2a2a;
+    color: #eaecf0;
+    border-color: #54595d;
+  }
+  .ta-year-sel.ta-year-override {
+    background: #2d1a00;
+    color: #ffc060;
+    border-color: #a06000;
+  }
+  .ta-year-row select {
+    background: #2a2a2a;
+    color: #eaecf0;
+    border-color: #54595d;
+  }
+  .ta-year-row select.ta-year-override {
+    background: #2d1a00;
+    color: #ffc060;
+    border-color: #a06000;
+  }
+  .tng-btn {
+    border-color: #54595d;
+    color: #eaecf0;
+  }
+  .tng-btn-primary {
+    border-color: #6699ff;
+    background: #6699ff;
+  }
+  .tng-btn-primary:hover:not(:disabled) {
+    background: #4f7bd9;
+    border-color: #4f7bd9;
+  }
+  .tng-btn-quiet:hover:not(:disabled) {
+    background: #2a2a35;
+  }
+  .tng-btn-destructive {
+    border-color: #ff6b6b;
+    background: #ff6b6b;
+  }
+  .tng-btn-destructive:hover:not(:disabled) {
+    background: #cc5555;
+    border-color: #cc5555;
+  }
+  .tng-btn-inline:hover:not(:disabled) {
+    background: #252535;
+    border-color: #6699ff;
+  }
+}

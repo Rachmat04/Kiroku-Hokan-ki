@@ -1,3 +1,13 @@
+## v2.13.0
+
+### Changed
+- Moved all gadget CSS out of `ArchiveUIManager.injectUtilityStyles()` into a separate stylesheet, `KirokuHokanki.css`
+- `injectUtilityStyles()` now loads the stylesheet at runtime via `mw.loader.load()` instead of injecting an inline `<style>` block via `mw.util.addCSS()`
+
+### Notes
+- No visual or functional changes; this release affects code organisation only
+- Requires the companion file `KirokuHokanki.css` to be deployed alongside `KirokuHokanki.js`
+
 ## v2.12.1
 
 ### Changed
