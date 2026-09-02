@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * Kiroku Hōkan-ki — 記録保管機
- * Version 2.13.0
+ * Version 2.13.1
  * Semi-automated talk page archiving gadget
  * ============================================================================
  * PURPOSE:
@@ -429,12 +429,12 @@
       const translationPatterns = [
         {
           id: "iso-standard",
-          re: /\b(\d{4})-(\d{2})-(\d{2})[T\s](\d{2})[.:](\d{2})[.:]?(\d{2})?(?:Z)?\b/g,
+          re: /\b(\d{4})-(\d{2})-(\d{2})[T\s](\d{2})[.:](\d{2})[.:]?(\d{2})?(?:Z)?\b/,
           extract: (m) => [+m[1], +m[2], +m[3], +m[4], +m[5]],
         },
         {
           id: "global-dmy-signature",
-          re: /(?:(\d{1,2})[.:](\d{2}),\s+)?(\d{1,2})[\s\u200E\u200F\u00A0]+(\p{L}+(?:[\s\u00A0]+\p{L}+)*\.?)[\s\u200E\u200F\u00A0]+(\d{4})(?:[\s,]+(\d{1,2})[.:](\d{2}))?\b/gu,
+          re: /(?:(\d{1,2})[.:](\d{2}),\s+)?(\d{1,2})[\s\u200E\u200F\u00A0]+(\p{L}+(?:[\s\u00A0]+\p{L}+)*\.?)[\s\u200E\u200F\u00A0]+(\d{4})(?:[\s,]+(\d{1,2})[.:](\d{2}))?\b/u,
           extract: (m) => {
             const rawMonth = m[4].toLowerCase().replace(/\./g, "").trim();
             const targetMonth = monthMap[rawMonth];
@@ -446,7 +446,7 @@
         },
         {
           id: "global-mdy-signature",
-          re: /\b(\p{L}+(?:[\s\u00A0]+\p{L}+)*\.?)[\s\u200E\u200F\u00A0]+(\d{1,2}),\s+(\d{4})(?:[\s,]+(\d{1,2})[.:](\d{2}))?\b/gu,
+          re: /\b(\p{L}+(?:[\s\u00A0]+\p{L}+)*\.?)[\s\u200E\u200F\u00A0]+(\d{1,2}),\s+(\d{4})(?:[\s,]+(\d{1,2})[.:](\d{2}))?\b/u,
           extract: (m) => {
             const rawMonth = m[1].toLowerCase().replace(/\./g, "").trim();
             const targetMonth = monthMap[rawMonth];
@@ -458,7 +458,7 @@
         },
         {
           id: "cjk-signature",
-          re: /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*\([^)]+\))?\s*(\d{1,2})[:.](\d{2})/gu,
+          re: /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*\([^)]+\))?\s*(\d{1,2})[:.](\d{2})/u,
           extract: (m) => [+m[1], +m[2], +m[3], +m[4], +m[5]],
         },
       ];

@@ -1,3 +1,9 @@
+## v2.13.1
+
+### Fixed
+- Fixed a bug in `computeThreadActivityDate()` where global-flagged regex patterns kept their `lastIndex` position across lines within the same thread, causing valid timestamp signatures on later lines to be missed
+- Removed the unused `g` flag from all four timestamp patterns so each line is matched from the start, as intended
+
 ## v2.13.0
 
 ### Changed
